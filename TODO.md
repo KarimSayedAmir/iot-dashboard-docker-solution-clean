@@ -1,110 +1,68 @@
-# IoT Dashboard - TODO Liste
+# IoT-Dashboard Todo-Liste (Streamlit-Version)
 
-## Kritische Probleme
-- [ ] CSV-Upload-Fehler beheben
-  - [ ] CORS-Konfiguration im Backend überprüfen
-  - [ ] Upload-Endpunkt-URL in Frontend-Konfiguration anpassen
-  - [ ] Fehlerbehandlung im Upload-Prozess verbessern
-  - [ ] Upload-Status-Feedback im UI optimieren
-- [ ] UI-Styling vollständig implementieren
-  - [ ] Fehlende Styles für mobile Ansicht optimieren
-  - [ ] Dark Mode implementieren
-  - [ ] Konsistente Farbpalette durchsetzen
-- [ ] Backend-Endpunkte vervollständigen
-  - [ ] Health-Check-Endpunkt erweitern
-  - [ ] API-Dokumentation erstellen
-  - [ ] Fehlerbehandlung verbessern
+## Projektstruktur und Setup
 
-## Funktionale Erweiterungen
-- [ ] Datenvisualisierung
-  - [ ] Zusätzliche Diagrammtypen implementieren
-  - [ ] Exportfunktionen für Diagramme
-  - [ ] Zoom- und Pan-Funktionen für Diagramme
-- [ ] Datenverarbeitung
-  - [ ] Verbesserte Ausreißererkennung
-  - [ ] Automatische Datenaggregation
-  - [ ] Datenvalidierung erweitern
+- [x] Projektstruktur anlegen
+- [x] ARCHITECTURE.md erstellen
+- [x] TODO.md erstellen
+- [ ] requirements.txt für Python-Abhängigkeiten erstellen
+- [ ] Streamlit-Konfiguration einrichten (.streamlit/config.toml)
+- [ ] Ordnerstruktur für Module und Daten erstellen
 
-## Benutzerfreundlichkeit
-- [ ] Setup-Seite
-  - [ ] Drag & Drop für CSV-Upload
-  - [ ] Vorschau der CSV-Daten
-  - [ ] Verbesserte Fehlermeldungen
-- [ ] Ansichts-Seite
-  - [ ] Filter- und Sortierfunktionen
-  - [ ] Suchfunktion für Datensätze
-  - [ ] Anpassbare Dashboard-Layouts
+## Datenverarbeitung
 
-## Technische Verbesserungen
-- [ ] Performance
-  - [ ] Code-Splitting implementieren
-  - [ ] Lazy Loading für Komponenten
-  - [ ] Caching-Strategien optimieren
-- [ ] Testing
-  - [ ] Unit Tests für Frontend
-  - [ ] Integration Tests für Backend
-  - [ ] End-to-End Tests
-- [ ] Docker
-  - [ ] Multi-Stage Builds optimieren
-  - [ ] Container-Größe reduzieren
-  - [ ] Docker Compose für Entwicklung anpassen
+- [ ] Basisfunktionen für CSV-Import implementieren (modules/data_processing.py)
+- [ ] Funktionen für Datenbereinigung und -normalisierung erstellen
+- [ ] Ausreißererkennung und -korrektur implementieren
+- [ ] Aggregationsfunktionen für tägliche und wöchentliche Werte erstellen
+- [ ] Zeitraumfilterung implementieren
+
+## Datenbank
+
+- [ ] SQLite-Datenbankschema definieren
+- [ ] CRUD-Operationen für Wochen und manuelle Korrekturen implementieren
+- [ ] Datenbankmigrationen für zukünftige Updates vorbereiten
+
+## Benutzeroberfläche
+
+- [ ] Hauptseite mit Navigation erstellen (app.py)
+- [ ] CSV-Upload-Komponente implementieren
+- [ ] Setup-Seite mit Datentyp-Auswahl erstellen (pages/setup.py)
+- [ ] Ansichtsseite mit Visualisierungen erstellen (pages/view.py)
+- [ ] Export-Funktionalität für PDF und CSV implementieren (pages/export.py)
+- [ ] Filteroptionen für Zeiträume einbauen
+
+## Visualisierung
+
+- [ ] Zeitreihendiagramme für Sensordaten erstellen (modules/visualization.py)
+- [ ] Balkendiagramme für Aggregationen implementieren
+- [ ] Heatmaps für Datendichte und Ausreißer hinzufügen
+- [ ] Interaktive Elemente für Grafiken (Zoom, Hover, etc.) konfigurieren
 
 ## Dokumentation
-- [ ] Benutzerhandbuch erstellen
-  - [ ] Setup-Anleitung
-  - [ ] Bedienungsanleitung
-  - [ ] FAQ-Sektion
-- [ ] Entwicklerdokumentation
-  - [ ] API-Dokumentation
-  - [ ] Architekturübersicht
-  - [ ] Deployment-Guide
 
-## Sicherheit
-- [ ] Authentifizierung
-  - [ ] Login-System implementieren
-  - [ ] Benutzerrollen definieren
-  - [ ] Zugriffsrechte verwalten
-- [ ] Datensicherheit
-  - [ ] HTTPS erzwingen
-  - [ ] API-Schlüssel-Verwaltung
-  - [ ] Datenbackup-Strategie
+- [ ] Installationsanleitung für Endbenutzer schreiben
+- [ ] Code-Dokumentation mit DocStrings vervollständigen
+- [ ] Benutzerhandbuch mit Screenshots erstellen
 
-## Wartung
-- [ ] Monitoring
-  - [ ] Logging-System implementieren
-  - [ ] Performance-Metriken erfassen
-  - [ ] Alerting einrichten
-- [ ] Updates
-  - [ ] Abhängigkeiten aktualisieren
-  - [ ] Sicherheitsupdates automatisieren
-  - [ ] Versionierung verbessern
+## Optimierung und Tests
 
-## Nice-to-Have Features
-- [ ] Mehrsprachigkeit
-  - [ ] i18n-System implementieren
-  - [ ] Übersetzungen hinzufügen
-- [ ] Benachrichtigungen
-  - [ ] E-Mail-Benachrichtigungen
-  - [ ] Push-Benachrichtigungen
-- [ ] Reporting
-  - [ ] PDF-Export verbessern
-  - [ ] Excel-Export hinzufügen
-  - [ ] Automatische Berichterstellung
+- [ ] Performance-Optimierung für große Datensätze
+- [ ] Caching für wiederkehrende Berechnungen einrichten
+- [ ] Tests für kritische Funktionen schreiben
+- [ ] Fehlerbehandlung und Validierung verbessern
+- [ ] Responsive Design für verschiedene Bildschirmgrößen anpassen
 
-## Known Issues
-1. UI-Probleme
-   - Styling-Inkonsistenzen in der mobilen Ansicht
-   - Fehlende Responsive-Designs für einige Komponenten
-   - Performance-Probleme bei großen Datensätzen
+## Bereitstellung (optional)
 
-2. Backend-Probleme
-   - Fehlende Fehlerbehandlung in einigen Endpunkten
-   - Optimierungsbedarf bei Datenbankabfragen
-   - Verbesserungspotential bei der Datenvalidierung
+- [ ] Dockerfile für Container-Bereitstellung erstellen
+- [ ] docker-compose.yml für einfache Bereitstellung definieren
+- [ ] CI/CD-Pipeline für automatisierte Tests und Deployment konfigurieren
 
-## Nächste Schritte
-1. Kritische UI-Probleme beheben
-2. Backend-Endpunkte vervollständigen
-3. Grundlegende Sicherheitsfunktionen implementieren
-4. Dokumentation erstellen
-5. Test-Coverage erhöhen 
+## Erweiterungen
+
+- [ ] Mehrsprachige Unterstützung hinzufügen (Deutsch/Englisch)
+- [ ] Benutzerauthentifizierung implementieren (falls erforderlich)
+- [ ] Dunkelmodus für die Benutzeroberfläche hinzufügen
+- [ ] REST-API für externe Integrationen bereitstellen
+- [ ] Automatische Benachrichtigungen für Anomalien implementieren 
