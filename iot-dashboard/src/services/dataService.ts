@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { IoTData, ManualData } from '../types';
 
-// Base URL for the API
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+// Use environment variable with fallback
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+console.log('API_BASE_URL:', API_BASE_URL);
 
 // Interface for stored week data
 export interface StoredWeekData {
@@ -38,10 +40,61 @@ export const saveWeekData = async (
       manualCorrections
     });
     
+    if (!response.data || !response.data.id) {
+      throw new Error('Invalid response from server');
+    }
+    
     return response.data.id;
   } catch (error) {
     console.error('Error saving week data:', error);
-    throw error;
+    throw new Error('Failed to save week data. Please try again.');
+  }
+};
+
+// Get all stored weeks
+export const getAllWeeks = async (): Promise<StoredWeekData[]> => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/weeks`);
+    
+    if (!Array.isArray(response.data)) {
+      console.error('Invalid response format:', response.data);
+      return [];
+    }
+    
+    // Validiere die Daten
+    const validWeeks = response.data.filter((week: any) => {
+      return (
+        week &&
+        typeof week.id === 'string' &&
+        typeof week.start_date === 'string' &&
+        typeof week.end_date === 'string' &&
+        ['telemetry', 'totalAmount', 'both'].includes(week.data_type)
+      );
+    });
+    
+    return validWeeks;
+  } catch (error) {
+    console.error('Error getting all weeks:', error);
+    return [];
+  }
+};
+
+// Get week data by ID
+export const getWeekData = async (weekId: string): Promise<StoredWeekData | null> => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/weeks/${weekId}`);
+    
+    if (!response.data || !response.data.id) {
+      return null;
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error getting week data:', error);
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw new Error('Failed to load week data. Please try again.');
   }
 };
 
@@ -65,32 +118,7 @@ export const updateManualCorrections = async (
     }
   } catch (error) {
     console.error('Error updating manual corrections:', error);
-    throw error;
-  }
-};
-
-// Get week data by ID
-export const getWeekData = async (weekId: string): Promise<StoredWeekData | null> => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/weeks/${weekId}`);
-    return response.data;
-  } catch (error) {
-    console.error('Error getting week data:', error);
-    if (axios.isAxiosError(error) && error.response?.status === 404) {
-      return null;
-    }
-    throw error;
-  }
-};
-
-// Get all stored weeks
-export const getAllWeeks = async (): Promise<StoredWeekData[]> => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/weeks`);
-    return response.data;
-  } catch (error) {
-    console.error('Error getting all weeks:', error);
-    return [];
+    throw new Error('Failed to update corrections. Please try again.');
   }
 };
 
@@ -100,6 +128,6 @@ export const deleteWeekData = async (weekId: string): Promise<void> => {
     await axios.delete(`${API_BASE_URL}/weeks/${weekId}`);
   } catch (error) {
     console.error('Error deleting week data:', error);
-    throw error;
+    throw new Error('Failed to delete week data. Please try again.');
   }
 };

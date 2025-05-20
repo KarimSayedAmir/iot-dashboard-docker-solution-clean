@@ -4,7 +4,9 @@ import DataVisualization from './DataVisualization';
 import VariableSelector from './VariableSelector';
 import ManualDataForm from './ManualDataForm';
 import PDFExport from './PDFExport';
+import CSVUpload from './CSVUpload';
 import { parseCSVData, calculateAggregates, identifyOutliers, correctOutliers, filterByTimeRange } from '../utils/dataProcessing';
+import { API_BASE_URL } from '../services/dataService';
 
 interface DashboardProps {
   initialData?: string; // CSV-Daten als String
@@ -26,6 +28,7 @@ const Dashboard: React.FC<DashboardProps> = ({ initialData }) => {
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [fileUploaded, setFileUploaded] = useState<boolean>(!!initialData);
   const [aggregates, setAggregates] = useState<any>({ dailyAggregates: {}, weeklyAggregates: {} });
+  const [availableWeeks, setAvailableWeeks] = useState<any[]>([]);
   
   const dashboardRef = useRef<HTMLDivElement>(null);
 
@@ -80,28 +83,46 @@ const Dashboard: React.FC<DashboardProps> = ({ initialData }) => {
     }
   }, [rawData, timeRange, customStartDate, customEndDate]);
 
-  // CSV-Datei hochladen
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  // Alle Wochen laden
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/weeks`)
+      .then(response => response.json())
+      .then(weeks => {
+        setAvailableWeeks(weeks);
+      })
+      .catch(error => {
+        console.error('Error fetching weeks:', error);
+      });
+  }, []);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const csvData = e.target?.result as string;
-      const parsedData = parseCSVData(csvData);
-      setRawData(parsedData);
-      
-      // Berechne Aggregate
-      const calculatedAggregates = calculateAggregates(parsedData);
-      setAggregates(calculatedAggregates);
-      
-      // Filtere Daten nach Zeitraum
-      const filteredData = filterByTimeRange(parsedData, timeRange, customStartDate, customEndDate);
-      setProcessedData(filteredData);
-      
-      setFileUploaded(true);
-    };
-    reader.readAsText(file);
+  // CSV-Datei hochladen
+  const handleUploadSuccess = () => {
+    // Aktualisiere die Daten nach erfolgreichem Upload
+    fetch(`${API_BASE_URL}/weeks`)
+      .then(response => response.json())
+      .then(weeks => {
+        if (weeks.length > 0) {
+          // Hole die Daten der neuesten Woche
+          fetch(`${API_BASE_URL}/weeks/${weeks[0].id}`)
+            .then(response => response.json())
+            .then(weekData => {
+              setRawData(weekData.iotData);
+              
+              // Berechne Aggregate
+              const calculatedAggregates = calculateAggregates(weekData.iotData);
+              setAggregates(calculatedAggregates);
+              
+              // Filtere Daten nach Zeitraum
+              const filteredData = filterByTimeRange(weekData.iotData, timeRange, customStartDate, customEndDate);
+              setProcessedData(filteredData);
+              
+              setFileUploaded(true);
+            });
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching weeks after upload:', error);
+      });
   };
 
   // Manuelle Daten speichern
@@ -141,19 +162,7 @@ const Dashboard: React.FC<DashboardProps> = ({ initialData }) => {
       </header>
       
       <div className="dashboard-controls">
-        <div className="file-upload">
-          <h2>Daten importieren</h2>
-          <input 
-            type="file" 
-            accept=".csv" 
-            onChange={handleFileUpload} 
-            id="csv-upload"
-          />
-          <label htmlFor="csv-upload" className="btn-upload">
-            CSV-Datei auswählen
-          </label>
-          {fileUploaded && <span className="upload-success">✓ Datei geladen</span>}
-        </div>
+        <CSVUpload onUploadSuccess={handleUploadSuccess} />
         
         <div className="time-range-selector">
           <h2>Zeitraum</h2>

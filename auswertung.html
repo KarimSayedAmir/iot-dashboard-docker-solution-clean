@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV Auswertung Wasseraufbereitung</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    #graph { width: 90vw; height: 60vh; }
+  </style>
+</head>
+<body>
+  <h2>CSV Auswertung Wasseraufbereitung</h2>
+  <input type="file" id="csvFile" accept=".csv" />
+  <div>
+    <label>Bemerkungen zur Woche: <input id="notes" type="text" /></label>
+  </div>
+  <div id="graph"></div>
+  <script>
+    document.getElementById('csvFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        complete: function(results) {
+          const data = results.data;
+          // Beispiel: Telemetriedaten "pH", "Leitfähigkeit", "Datum"
+          const dates = data.map(row => row['Datum']);
+          const ph = data.map(row => row['pH']);
+          const leitfaehigkeit = data.map(row => row['Leitfähigkeit']);
+          Plotly.newPlot('graph', [
+            { x: dates, y: ph, name: 'pH', type: 'scatter', mode: 'lines+markers' },
+            { x: dates, y: leitfaehigkeit, name: 'Leitfähigkeit', type: 'scatter', mode: 'lines+markers' }
+          ], { title: 'Telemetrie Verlauf', xaxis: { title: 'Datum' } });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

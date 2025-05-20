@@ -8,14 +8,15 @@ RUN apk add --no-cache curl
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --omit=dev
+# Install dependencies and clean npm cache
+RUN npm install --omit=dev && \
+    npm cache clean --force
 
 # Copy the rest of the application
 COPY . .
 
-# Create data directory and set permissions
-RUN mkdir -p data && \
+# Create necessary directories and set permissions
+RUN mkdir -p data uploads && \
     chown -R node:node /app
 
 # Switch to non-root user

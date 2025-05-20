@@ -4,6 +4,12 @@ const bodyParser = require('body-parser');
 const morgan = require('morgan');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const csv = require('csv-parse');
+const fs = require('fs');
+const multer = require('multer');
+
+// Configure multer for file upload
+const upload = multer({ dest: 'uploads/' });
 
 // Initialize express app
 const app = express();
@@ -14,8 +20,33 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
+// API Prefix-Handling Middleware - Damit URLs sowohl mit als auch ohne /api-Präfix funktionieren
+app.use((req, res, next) => {
+  // Health-Endpunkt direkt weitergeben
+  if (req.path === '/health') {
+    return next();
+  }
+
+  // Überprüfen, ob die URL mit /api beginnt
+  const apiPrefixRegex = /^\/api\//;
+  if (!apiPrefixRegex.test(req.originalUrl)) {
+    // Wenn die URL nicht mit /api beginnt, prüfen, ob eine entsprechende Route existiert
+    // Aktuell sind alle Routen mit /api definiert
+    const apiUrl = `/api${req.originalUrl}`;
+    console.log(`Redirecting ${req.originalUrl} to ${apiUrl}`);
+    req.originalUrl = apiUrl;
+    req.url = apiUrl;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
+});
+
+// API health check endpoint
+app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'healthy' });
 });
 
@@ -62,6 +93,44 @@ db.serialize(() => {
 // Helper function to generate week ID
 const generateWeekId = (startDate, endDate) => {
   return `week_${startDate.replace(/\//g, '-')}_to_${endDate.replace(/\//g, '-')}`;
+};
+
+// Helper function to parse CSV data
+const parseCSVFile = (filePath) => {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    const headerData = {};
+
+    fs.createReadStream(filePath)
+      .pipe(csv({
+        skip_empty_lines: true,
+        from_line: 1
+      }))
+      .on('data', (data) => {
+        // First 5 lines contain header information
+        if (results.length < 5) {
+          const [key, value] = data;
+          headerData[key] = value;
+        } else if (results.length === 5) {
+          // This is the column headers line
+          headerData.columns = data;
+        } else {
+          // These are the actual data rows
+          const row = {};
+          headerData.columns.forEach((col, index) => {
+            row[col] = data[index];
+          });
+          results.push(row);
+        }
+      })
+      .on('end', () => {
+        resolve({
+          headerInfo: headerData,
+          data: results
+        });
+      })
+      .on('error', reject);
+  });
 };
 
 // API Routes
@@ -374,11 +443,111 @@ const cleanupOldData = () => {
 setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
 
 // Create data directory if it doesn't exist
-const fs = require('fs');
 const dataDir = path.resolve(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir);
 }
+
+// Make sure uploads directory exists
+const uploadsDir = path.resolve(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
+// Hilfsfunktion für CSV-Upload-Verarbeitung
+const handleCsvUpload = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  try {
+    const parsedData = await parseCSVFile(req.file.path);
+    
+    // Extract date range from header info
+    const startDate = parsedData.headerInfo['Start Time'];
+    const endDate = parsedData.headerInfo['End Time'];
+    const customer = parsedData.headerInfo['Customer'];
+    const name = parsedData.headerInfo['Name'];
+    
+    // Generate week ID using the actual dates from the file
+    const weekId = `week_${startDate.replace(/[\s:]/g, '-')}_to_${endDate.replace(/[\s:]/g, '-')}`;
+    const now = Date.now();
+
+    // Begin transaction
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // Insert week with actual dates from file
+      db.run(
+        'INSERT INTO weeks (id, start_date, end_date, data_type, created_at, last_modified) VALUES (?, ?, ?, ?, ?, ?)',
+        [weekId, startDate, endDate, 'telemetry', now, now],
+        function(err) {
+          if (err) {
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: err.message });
+          }
+
+          // Insert IoT data
+          const iotStmt = db.prepare('INSERT INTO iot_data (week_id, time, data) VALUES (?, ?, ?)');
+
+          // Remove duplicate entries (same timestamp)
+          const uniqueData = parsedData.data.reduce((acc, current) => {
+            const exists = acc.find(item => item.Time === current.Time);
+            if (!exists) {
+              acc.push(current);
+            }
+            return acc;
+          }, []);
+
+          for (const item of uniqueData) {
+            iotStmt.run(weekId, item.Time, JSON.stringify(item));
+          }
+
+          iotStmt.finalize();
+
+          db.run('COMMIT', function(err) {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: err.message });
+            }
+
+            // Clean up uploaded file
+            fs.unlink(req.file.path, (err) => {
+              if (err) console.error('Error deleting file:', err);
+            });
+
+            res.status(201).json({
+              id: weekId,
+              message: 'CSV data imported successfully',
+              summary: {
+                customer,
+                name,
+                startDate,
+                endDate,
+                recordCount: uniqueData.length,
+                originalRecordCount: parsedData.data.length,
+                duplicatesRemoved: parsedData.data.length - uniqueData.length
+              }
+            });
+          });
+        }
+      );
+    });
+  } catch (error) {
+    // Clean up uploaded file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error('Error deleting file:', err);
+    });
+    
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// New route to handle CSV file upload with /api prefix
+app.post('/api/upload-csv', upload.single('file'), handleCsvUpload);
+
+// Alternative route without /api prefix
+app.post('/upload-csv', upload.single('file'), handleCsvUpload);
 
 // Start server
 app.listen(port, '0.0.0.0', () => {

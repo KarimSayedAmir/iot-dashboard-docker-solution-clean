@@ -8,6 +8,7 @@ import PDFExport from '../components/PDFExport';
 import WeekSelector from '../components/WeekSelector';
 import { parseCSVData, calculateAggregates, identifyOutliers, correctOutliers, filterByTimeRange } from '../utils/dataProcessing';
 import { saveWeekData, updateManualCorrections, getAllWeeks, StoredWeekData } from '../services/dataService';
+import CSVUpload from '../components/CSVUpload';
 import '../styles/SetupPage.css';
 
 interface SetupPageProps {}
@@ -95,36 +96,29 @@ const SetupPage: React.FC<SetupPageProps> = () => {
     }
   }, [rawData, timeRange, customStartDate, customEndDate]);
 
-  // CSV-Datei hochladen
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const csvData = e.target?.result as string;
-      const parsedData = parseCSVData(csvData);
-      setRawData(parsedData);
-      
-      // Berechne Aggregate
-      const calculatedAggregates = calculateAggregates(parsedData);
-      setAggregates(calculatedAggregates);
-      
-      // Filtere Daten nach Zeitraum
-      const filteredData = filterByTimeRange(parsedData, timeRange, customStartDate, customEndDate);
-      setProcessedData(filteredData);
-      
-      setFileUploaded(true);
-      
-      // Extrahiere Start- und Enddatum aus den Daten
-      if (parsedData.length > 0) {
-        const dates = parsedData.map(item => item.Time.split(' ')[0]);
-        const sortedDates = [...new Set(dates)].sort();
-        setCustomStartDate(sortedDates[0]);
-        setCustomEndDate(sortedDates[sortedDates.length - 1]);
-      }
-    };
-    reader.readAsText(file);
+  // CSV-Upload erfolgreich
+  const handleUploadSuccess = (weekData: any) => {
+    // Setze die Rohdaten
+    setRawData(weekData.iotData);
+    
+    // Berechne Aggregate
+    const calculatedAggregates = calculateAggregates(weekData.iotData);
+    setAggregates(calculatedAggregates);
+    
+    // Setze den Zeitraum
+    setTimeRange('week');
+    setCustomStartDate(weekData.start_date);
+    setCustomEndDate(weekData.end_date);
+    
+    // Filtere Daten nach Zeitraum
+    const filteredData = filterByTimeRange(weekData.iotData, 'week', weekData.start_date, weekData.end_date);
+    setProcessedData(filteredData);
+    
+    // Setze Upload-Status
+    setFileUploaded(true);
+    
+    // Setze die Woche als ausgewählt
+    setSelectedWeekId(weekData.id);
   };
 
   // Manuelle Daten speichern
@@ -216,53 +210,41 @@ const SetupPage: React.FC<SetupPageProps> = () => {
       </header>
       
       <div className="dashboard-controls">
-        <div className="file-upload">
-          <h2>Daten importieren</h2>
-          <input 
-            type="file" 
-            accept=".csv" 
-            onChange={handleFileUpload} 
-            id="csv-upload"
-          />
-          <label htmlFor="csv-upload" className="btn-upload">
-            CSV-Datei auswählen
-          </label>
-          {fileUploaded && <span className="upload-success">✓ Datei geladen</span>}
-          
-          <div className="data-type-selector">
-            <h3>Datentyp</h3>
-            <div className="radio-group">
-              <label>
-                <input 
-                  type="radio" 
-                  name="dataType" 
-                  value="telemetry" 
-                  checked={dataType === 'telemetry'} 
-                  onChange={() => setDataType('telemetry')} 
-                />
-                Telemetriedaten
-              </label>
-              <label>
-                <input 
-                  type="radio" 
-                  name="dataType" 
-                  value="totalAmount" 
-                  checked={dataType === 'totalAmount'} 
-                  onChange={() => setDataType('totalAmount')} 
-                />
-                Gesamtmengen
-              </label>
-              <label>
-                <input 
-                  type="radio" 
-                  name="dataType" 
-                  value="both" 
-                  checked={dataType === 'both'} 
-                  onChange={() => setDataType('both')} 
-                />
-                Beides
-              </label>
-            </div>
+        <CSVUpload onUploadSuccess={handleUploadSuccess} />
+        
+        <div className="data-type-selector">
+          <h3>Datentyp</h3>
+          <div className="radio-group">
+            <label>
+              <input 
+                type="radio" 
+                name="dataType" 
+                value="telemetry" 
+                checked={dataType === 'telemetry'} 
+                onChange={() => setDataType('telemetry')} 
+              />
+              Telemetriedaten
+            </label>
+            <label>
+              <input 
+                type="radio" 
+                name="dataType" 
+                value="totalAmount" 
+                checked={dataType === 'totalAmount'} 
+                onChange={() => setDataType('totalAmount')} 
+              />
+              Gesamtmengen
+            </label>
+            <label>
+              <input 
+                type="radio" 
+                name="dataType" 
+                value="both" 
+                checked={dataType === 'both'} 
+                onChange={() => setDataType('both')} 
+              />
+              Beides
+            </label>
           </div>
         </div>
         
@@ -327,11 +309,15 @@ const SetupPage: React.FC<SetupPageProps> = () => {
         
         <div className="week-storage">
           <h2>Wochenverwaltung</h2>
-          <WeekSelector 
-            weeks={storedWeeks}
-            selectedWeekId={selectedWeekId}
-            onSelectWeek={setSelectedWeekId}
-          />
+          {storedWeeks.length > 0 ? (
+            <WeekSelector 
+              weeks={storedWeeks}
+              selectedWeekId={selectedWeekId}
+              onSelectWeek={setSelectedWeekId}
+            />
+          ) : (
+            <p className="no-weeks-message">Keine gespeicherten Wochen vorhanden.</p>
+          )}
           <div className="storage-actions">
             <button 
               className="btn-save-week"

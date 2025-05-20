@@ -1,6 +1,11 @@
 # IoT Dashboard - TODO Liste
 
 ## Kritische Probleme
+- [ ] CSV-Upload-Fehler beheben
+  - [ ] CORS-Konfiguration im Backend überprüfen
+  - [ ] Upload-Endpunkt-URL in Frontend-Konfiguration anpassen
+  - [ ] Fehlerbehandlung im Upload-Prozess verbessern
+  - [ ] Upload-Status-Feedback im UI optimieren
 - [ ] UI-Styling vollständig implementieren
   - [ ] Fehlende Styles für mobile Ansicht optimieren
   - [ ] Dark Mode implementieren
