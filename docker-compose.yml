@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: 
+      context: ./iot-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "8099:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - iot-network
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://backend:3000
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    volumes:
+      - db-data:/app/data
+    networks:
+      - iot-network
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  iot-network:
+    driver: bridge
+
+volumes:
+  db-data:
+    driver: local
