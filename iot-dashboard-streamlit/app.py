@@ -13,8 +13,8 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 
-# Middleware für iframe-Unterstützung importieren
-import middleware
+# Middleware für iframe-Unterstützung nicht mehr notwendig, da wir die Einstellungen in config.toml konfigurieren
+# import middleware
 
 # Module importieren
 from modules.data_processing import (
