@@ -319,40 +319,44 @@ def create_heatmap(data: pd.DataFrame,
     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     heatmap_pivot = heatmap_pivot.reindex(days_order)
     
-    # Farbskala auswählen
+    # Standardfarbskala
     colorscale = 'Viridis'
     
-    # Wenn ein Grenzwert definiert ist, benutzerdefinierte Farbskala erstellen
+    # Überprüfen, ob ein Grenzwert für die Variable definiert ist
     threshold = thresholds.get(variable, None)
+    
+    # Benutzdefinierte Farbskala erstellen, wenn ein Grenzwert definiert ist
     if threshold is not None:
         # Maximalen Wert für die Normalisierung berechnen
         max_val = heatmap_pivot.values.max()
         
-        # Sicherstellen, dass wir keine Division durch Null oder NaN-Werte haben
+        # Sicherstellen, dass max_val gültig und positiv ist
         if pd.notnull(max_val) and max_val > 0:
             # Berechne den normalisierten Grenzwert (zwischen 0 und 1)
-            # Schutz vor NaN oder ungültigen Werten
-            norm_threshold = threshold / max_val
-            
-            # Sicherstellen, dass der Wert zwischen 0.01 und 0.99 liegt
-            norm_threshold = max(0.01, min(0.99, norm_threshold))
-            
-            # Prüfen, ob norm_threshold ein gültiger Wert ist (nicht NaN)
-            if not pd.isna(norm_threshold):
-                # Anpassen der Farbskala, um Werte über dem Grenzwert hervorzuheben
-                colorscale = [
-                    [0, 'blue'],
-                    [norm_threshold, 'yellow'],
-                    [1, 'red']
-                ]
-            else:
-                # Fallback bei ungültigem Wert
+            try:
+                norm_threshold = float(threshold) / float(max_val)
+                
+                # Sicherstellen, dass norm_threshold ein gültiger Wert zwischen 0.01 und 0.99 ist
+                norm_threshold = max(0.01, min(0.99, norm_threshold))
+                
+                # Nur wenn norm_threshold gültig ist, benutzdefinierte Farbskala verwenden
+                if pd.notnull(norm_threshold):
+                    colorscale = [
+                        [0.0, 'blue'],      # Niedrige Werte = blau
+                        [norm_threshold, 'yellow'],  # Grenzwert = gelb
+                        [1.0, 'red']        # Hohe Werte = rot
+                    ]
+                else:
+                    # Fallback bei ungültigem norm_threshold
+                    colorscale = 'RdYlBu_r'
+            except (ValueError, TypeError):
+                # Fallback bei Fehler in der Berechnung
                 colorscale = 'RdYlBu_r'
         else:
-            # Wenn max_val ungültig ist, verwende eine Standardfarbskala
+            # Fallback bei ungültigem max_val
             colorscale = 'RdYlBu_r'
     
-    # Heatmap erstellen
+    # Heatmap erstellen mit sicherer Farbskala
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_pivot.values,
         x=heatmap_pivot.columns,
