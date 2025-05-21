@@ -65,4 +65,25 @@
 - [ ] Benutzerauthentifizierung implementieren (falls erforderlich)
 - [ ] Dunkelmodus für die Benutzeroberfläche hinzufügen
 - [ ] REST-API für externe Integrationen bereitstellen
-- [ ] Automatische Benachrichtigungen für Anomalien implementieren 
+- [ ] Automatische Benachrichtigungen für Anomalien implementieren
+
+## Erledigte Aufgaben
+- ✅ Umstellung auf Streamlit
+- ✅ CSV-Import mit Metadaten-Header implementieren (Überspringe die ersten 5 Zeilen)
+- ✅ Pumpenlaufzeiten berechnen
+- ✅ Automatische Erkennung von Pumpen-Variablen
+- ✅ Template-System für das Speichern und Laden von Einstellungen
+- ✅ Fehlerbehebung in der Heatmap-Visualisierung (NaN-Fehler)
+- ✅ Flow-Berechnungen und Visualisierungen für Anlagen 0058 und 0059
+  - Implementiert Gesamtmengenberechnung für Flow_Rate_59 und ARA_Flow
+  - Hinzufügen eines neuen "Flow-Berechnungen"-Tabs mit detaillierten Visualisierungen
+  - Verbesserung der Dashboard-Anzeige für Flow-Werte
+
+## Laufende Aufgaben
+- Verbesserte Datenprozessierung und Ausreißererkennung
+
+## Zukünftige Verbesserungen
+- Integration von Realtime-Updates aus IoT-Geräten
+- Export von Berichten als PDF oder Excel-Dateien
+- Erweiterung des Alarmierungssystems bei Überschreitung von Grenzwerten
+- Mobile Benachrichtigungen konfigurieren 
