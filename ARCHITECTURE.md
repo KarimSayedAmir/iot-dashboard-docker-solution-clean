@@ -8,7 +8,7 @@ Diese Dokumentation beschreibt die Architektur der Streamlit-basierten Version d
 - **Datenverarbeitung**: Pandas und NumPy
 - **Visualisierung**: Plotly Express und Plotly Graph Objects
 - **Datenbank**: SQLite (geplant, aktuell dateibasiert)
-- **Containerisierung**: Docker (optional, geplant)
+- **Hosting**: Streamlit Cloud (geplant)
 
 ## Komponenten
 
@@ -65,9 +65,7 @@ iot-dashboard-streamlit/
 ├── data/                     # Datenspeicherung
 │   └── templates/            # Gespeicherte Benutzereinstellungen
 ├── .streamlit/               # Streamlit-Konfiguration
-├── requirements.txt          # Python-Abhängigkeiten (geplant)
-├── Dockerfile                # Docker-Definition (geplant)
-└── docker-compose.yml        # Docker-Compose-Konfiguration (geplant)
+└── requirements.txt          # Python-Abhängigkeiten
 ```
 
 ## Technologiestack
@@ -77,7 +75,6 @@ iot-dashboard-streamlit/
 - **Pandas 1.5+**: Datenmanipulation und -analyse
 - **Plotly 5.10+**: Interaktive Visualisierungen
 - **NumPy**: Wissenschaftliche Berechnungen
-- **Docker (geplant)**: Containerisierung für einfache Bereitstellung
 
 ## Spezielle Funktionen
 
@@ -103,19 +100,22 @@ iot-dashboard-streamlit/
 
 ## Online-Bereitstellungsmöglichkeiten
 
-Für die Bereitstellung der Anwendung sind folgende Optionen geplant:
+Für die Bereitstellung der Anwendung wird folgende Strategie geplant:
 
-1. **Docker-basierte Bereitstellung**:
-   - Containerisierung der Anwendung für einfache Installation und Konsistenz
-   - Multi-Container-Setup mit Docker Compose für zukünftige Erweiterungen
+1. **Streamlit Cloud**:
+   - Direkte Anbindung an GitHub-Repository
+   - Einfache Bereitstellung ohne Server-Management
+   - Automatische Updates bei Code-Änderungen
+   - Kostenlose Hosting-Option für öffentliche Apps
 
-2. **Cloud-Hosting**:
-   - Bereitstellung auf Cloud-Plattformen wie Heroku, AWS, oder Google Cloud
-   - Integration mit CI/CD-Pipelines für automatisierte Deployments
+2. **Heroku (Alternative)**:
+   - Python-basierte Bereitstellung
+   - Einfache Skalierung bei Bedarf
+   - Integration mit CI/CD-Pipelines
 
-3. **Lokales Deployment**:
-   - Einfache Installation für Endbenutzer mit klaren Anweisungen
-   - Unterstützung für verschiedene Betriebssysteme
+3. **PythonAnywhere (Alternative)**:
+   - Einfache Bereitstellung für Python-Anwendungen
+   - Längerfristiges Hosting mit stabilem Setup
 
 ## Vorteile der Streamlit-Architektur
 

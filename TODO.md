@@ -5,7 +5,7 @@
 - [x] Projektstruktur anlegen
 - [x] ARCHITECTURE.md erstellen
 - [x] TODO.md erstellen
-- [ ] requirements.txt für Python-Abhängigkeiten erstellen
+- [x] requirements.txt für Python-Abhängigkeiten erstellen
 - [ ] Streamlit-Konfiguration einrichten (.streamlit/config.toml)
 - [x] Ordnerstruktur für Module und Daten erstellen
 
@@ -41,7 +41,7 @@
 
 ## Dokumentation
 
-- [ ] Installationsanleitung für Endbenutzer schreiben
+- [x] Installationsanleitung für Endbenutzer schreiben
 - [ ] Code-Dokumentation mit DocStrings vervollständigen
 - [ ] Benutzerhandbuch mit Screenshots erstellen
 
@@ -53,10 +53,11 @@
 - [x] Fehlerbehandlung und Validierung verbessern
 - [ ] Responsive Design für verschiedene Bildschirmgrößen anpassen
 
-## Bereitstellung (optional)
+## Bereitstellung
 
-- [ ] Dockerfile für Container-Bereitstellung erstellen
-- [ ] docker-compose.yml für einfache Bereitstellung definieren
+- [ ] GitHub-Repository für die Bereitstellung vorbereiten
+- [ ] Streamlit Cloud-Konfiguration einrichten
+- [ ] Secrets-Management für Zugangsdaten implementieren
 - [ ] CI/CD-Pipeline für automatisierte Tests und Deployment konfigurieren
 
 ## Erweiterungen

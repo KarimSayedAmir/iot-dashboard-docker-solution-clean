@@ -13,7 +13,7 @@ Ein leistungsstarkes Dashboard zur Analyse und Visualisierung von IoT-Sensordate
 
 ## Installation
 
-### Option 1: Lokale Installation
+### Lokale Installation
 
 1. Klonen Sie das Repository:
    ```
@@ -35,21 +35,6 @@ Ein leistungsstarkes Dashboard zur Analyse und Visualisierung von IoT-Sensordate
    ```
 
 4. Öffnen Sie Ihren Browser und navigieren Sie zu `http://localhost:8501`
-
-### Option 2: Docker-Installation
-
-1. Klonen Sie das Repository:
-   ```
-   git clone https://github.com/ihr-username/iot-dashboard.git
-   cd iot-dashboard
-   ```
-
-2. Bauen und starten Sie die Container:
-   ```
-   docker-compose up -d
-   ```
-
-3. Öffnen Sie Ihren Browser und navigieren Sie zu `http://localhost:8501`
 
 ## Verwendung
 
@@ -83,9 +68,19 @@ iot-dashboard-streamlit/
 
 Für die Bereitstellung in einer Produktionsumgebung empfehlen wir:
 
-1. **Docker-basierte Bereitstellung** mit angepassten Umgebungsvariablen
-2. **Cloud-Hosting** auf Plattformen wie AWS, Google Cloud oder Azure
-3. **Streamlit Cloud** für einfache Bereitstellung ohne Serveradministration
+1. **Streamlit Cloud**: 
+   - Verbinden Sie Ihr GitHub-Repository mit https://streamlit.io/cloud
+   - Vollständig kostenlos für öffentliche Apps
+   - Automatische Bereitstellung bei jedem Push
+   - Einfache Weitergabe über eine URL
+
+2. **Heroku**:
+   - Python-basierte Bereitstellung ohne Docker
+   - Einfach zu konfigurieren mit einer Procfile-Datei
+   - Automatische Skalierung bei Bedarf
+
+3. **PythonAnywhere** oder **AWS Elastic Beanstalk**:
+   - Alternative Optionen für längerfristiges Hosting
 
 ## Lizenz
 
