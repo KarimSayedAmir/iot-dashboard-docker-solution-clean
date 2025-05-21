@@ -9,7 +9,6 @@ font = "sans serif"
 enableCORS = false
 enableXsrfProtection = false
 maxUploadSize = 200
-allowIframeEmbedding = true
 
 [runner]
 fastReruns = true
@@ -20,7 +19,6 @@ gatherUsageStats = false
 
 [ui]
 hideTopBar = true
-hideSidebarNav = true
 
 [logger]
 level = "info" 

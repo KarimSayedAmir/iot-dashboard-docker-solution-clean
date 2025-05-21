@@ -12,10 +12,6 @@ import streamlit as st
 # Füge das Unterverzeichnis dem Python-Pfad hinzu
 sys.path.append("iot-dashboard-streamlit")
 
-# Setze URL-Parameter für die Einbettung
-if "embed" not in st.query_params:
-    st.query_params["embed"] = "true"
-
 # Die App direkt aus dem Unterordner starten
 # Wir nutzen eine einfachere Methode zum Importieren der Hauptapp
 
