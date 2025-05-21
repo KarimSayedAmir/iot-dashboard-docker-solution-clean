@@ -7,15 +7,15 @@
 - [x] TODO.md erstellen
 - [ ] requirements.txt für Python-Abhängigkeiten erstellen
 - [ ] Streamlit-Konfiguration einrichten (.streamlit/config.toml)
-- [ ] Ordnerstruktur für Module und Daten erstellen
+- [x] Ordnerstruktur für Module und Daten erstellen
 
 ## Datenverarbeitung
 
-- [ ] Basisfunktionen für CSV-Import implementieren (modules/data_processing.py)
-- [ ] Funktionen für Datenbereinigung und -normalisierung erstellen
-- [ ] Ausreißererkennung und -korrektur implementieren
-- [ ] Aggregationsfunktionen für tägliche und wöchentliche Werte erstellen
-- [ ] Zeitraumfilterung implementieren
+- [x] Basisfunktionen für CSV-Import implementieren (modules/data_processing.py)
+- [x] Funktionen für Datenbereinigung und -normalisierung erstellen
+- [x] Ausreißererkennung und -korrektur implementieren
+- [x] Aggregationsfunktionen für tägliche und wöchentliche Werte erstellen
+- [x] Zeitraumfilterung implementieren
 
 ## Datenbank
 
@@ -25,19 +25,19 @@
 
 ## Benutzeroberfläche
 
-- [ ] Hauptseite mit Navigation erstellen (app.py)
-- [ ] CSV-Upload-Komponente implementieren
+- [x] Hauptseite mit Navigation erstellen (app.py)
+- [x] CSV-Upload-Komponente implementieren
+- [x] Filteroptionen für Zeiträume einbauen
 - [ ] Setup-Seite mit Datentyp-Auswahl erstellen (pages/setup.py)
 - [ ] Ansichtsseite mit Visualisierungen erstellen (pages/view.py)
 - [ ] Export-Funktionalität für PDF und CSV implementieren (pages/export.py)
-- [ ] Filteroptionen für Zeiträume einbauen
 
 ## Visualisierung
 
-- [ ] Zeitreihendiagramme für Sensordaten erstellen (modules/visualization.py)
-- [ ] Balkendiagramme für Aggregationen implementieren
-- [ ] Heatmaps für Datendichte und Ausreißer hinzufügen
-- [ ] Interaktive Elemente für Grafiken (Zoom, Hover, etc.) konfigurieren
+- [x] Zeitreihendiagramme für Sensordaten erstellen (modules/visualization.py)
+- [x] Balkendiagramme für Aggregationen implementieren
+- [x] Heatmaps für Datendichte und Ausreißer hinzufügen
+- [x] Interaktive Elemente für Grafiken (Zoom, Hover, etc.) konfigurieren
 
 ## Dokumentation
 
@@ -47,10 +47,10 @@
 
 ## Optimierung und Tests
 
-- [ ] Performance-Optimierung für große Datensätze
+- [x] Performance-Optimierung für große Datensätze
 - [ ] Caching für wiederkehrende Berechnungen einrichten
 - [ ] Tests für kritische Funktionen schreiben
-- [ ] Fehlerbehandlung und Validierung verbessern
+- [x] Fehlerbehandlung und Validierung verbessern
 - [ ] Responsive Design für verschiedene Bildschirmgrößen anpassen
 
 ## Bereitstellung (optional)
@@ -78,12 +78,18 @@
   - Implementiert Gesamtmengenberechnung für Flow_Rate_59 und ARA_Flow
   - Hinzufügen eines neuen "Flow-Berechnungen"-Tabs mit detaillierten Visualisierungen
   - Verbesserung der Dashboard-Anzeige für Flow-Werte
+- ✅ Präzise Flow-Berechnungen mit Berücksichtigung der Zeitintervalle
+  - Implementierung einer verbesserten Berechnungsmethode für Flow-Mengen
+  - Anwendung auf Gesamtberechnung und tägliche Statistiken
+  - Kombination der Flow-Mengen von Geräten 58 und 59
 
 ## Laufende Aufgaben
 - Verbesserte Datenprozessierung und Ausreißererkennung
+- Optimierung der Benutzeroberfläche für bessere Übersichtlichkeit
 
 ## Zukünftige Verbesserungen
 - Integration von Realtime-Updates aus IoT-Geräten
 - Export von Berichten als PDF oder Excel-Dateien
 - Erweiterung des Alarmierungssystems bei Überschreitung von Grenzwerten
-- Mobile Benachrichtigungen konfigurieren 
+- Mobile Benachrichtigungen konfigurieren
+- Implementierung einer Datenbank zur persistenten Speicherung von Analyseergebnissen 
