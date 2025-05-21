@@ -362,6 +362,52 @@ def correct_outliers(data: pd.DataFrame, variable: str, outlier_indices: List[in
         
     return df
 
+def calculate_flow_with_time(data: pd.DataFrame, flow_column: str) -> float:
+    """
+    Berechnet die Gesamtmenge eines Durchflusses unter Berücksichtigung der Zeitintervalle.
+    
+    Args:
+        data: DataFrame mit den Daten
+        flow_column: Name der Durchfluss-Spalte
+        
+    Returns:
+        Berechnete Gesamtmenge in m³
+    """
+    if flow_column not in data.columns or data.empty:
+        return 0.0
+    
+    # Kopie der Daten erstellen und sortieren
+    sorted_data = data.copy().sort_values('Time')
+    
+    # Filtere negative Werte und NaN heraus
+    sorted_data[flow_column] = sorted_data[flow_column].replace([np.inf, -np.inf], np.nan)
+    sorted_data = sorted_data.dropna(subset=[flow_column])
+    sorted_data = sorted_data[sorted_data[flow_column] >= 0]
+    
+    if sorted_data.empty:
+        return 0.0
+    
+    # Zeitliche Differenzen berechnen (in Stunden)
+    time_diffs = sorted_data['Time'].diff().dt.total_seconds() / 3600  # in Stunden
+    
+    # Standardwert für das erste Intervall (falls nicht verfügbar)
+    if len(time_diffs) > 1:
+        avg_interval = time_diffs[1:].mean()  # Erstes Intervall ausschließen bei der Durchschnittsberechnung
+    else:
+        avg_interval = 0.25  # 15 Minuten in Stunden als Standardwert
+    
+    if pd.isna(avg_interval) or avg_interval == 0:
+        avg_interval = 0.25  # Sicherstellung, dass ein sinnvoller Wert verwendet wird
+    
+    # Ersetze NaN im ersten Eintrag mit dem Durchschnittsintervall
+    time_diffs.iloc[0] = avg_interval
+    
+    # Berechne die Gesamtmenge als Summe aus (Flow-Rate * Zeit-Intervall)
+    # Flow-Rate ist in m³/h, Zeit in Stunden, ergibt m³
+    total_flow = (sorted_data[flow_column] * time_diffs).sum()
+    
+    return total_flow
+
 def calculate_aggregates(data: pd.DataFrame, pump_runtimes: Dict = None) -> Dict:
     """
     Berechnet Aggregate (tägliche und wöchentliche Zusammenfassungen) aus den Daten.
@@ -444,48 +490,44 @@ def calculate_aggregates(data: pd.DataFrame, pump_runtimes: Dict = None) -> Dict
             else:
                 weekly_agg['pumpDuration'] = 0
     
-    # Gesamtmengen für Durchfluss
-    # Aktualisierte Flow-Berechnung für die spezifischen Spalten Flow_Rate_59 und ARA_Flow
+    # Verbesserte Flow-Berechnung mit Berücksichtigung der Zeitintervalle
+    flow_rate_59 = 0.0
     if 'Flow_Rate_59' in data.columns:
-        # Filtere negative Werte und NaN heraus für realistischere Summen
-        valid_flow = data['Flow_Rate_59'].replace([np.inf, -np.inf], np.nan).dropna()
-        valid_flow = valid_flow[valid_flow >= 0]  # Nur positive Werte
-        weekly_agg['totalFlowGalgenkanal'] = valid_flow.sum()
+        flow_rate_59 = calculate_flow_with_time(data, 'Flow_Rate_59')
+        weekly_agg['totalFlowGalgenkanal'] = flow_rate_59
     else:
-        # Fallback für andere Flow-Spalten mit "Galgen" im Namen
         galgen_flow_col = next((col for col in numeric_cols if 'Flow' in col and ('Galgen' in col or '59' in col)), None)
         if galgen_flow_col:
-            valid_flow = data[galgen_flow_col].replace([np.inf, -np.inf], np.nan).dropna()
-            valid_flow = valid_flow[valid_flow >= 0]
-            weekly_agg['totalFlowGalgenkanal'] = valid_flow.sum()
+            flow_rate_59 = calculate_flow_with_time(data, galgen_flow_col)
+            weekly_agg['totalFlowGalgenkanal'] = flow_rate_59
         else:
             weekly_agg['totalFlowGalgenkanal'] = 0
     
+    flow_ara = 0.0
     if 'ARA_Flow' in data.columns:
-        # Filtere negative Werte und NaN heraus für realistischere Summen
-        valid_flow = data['ARA_Flow'].replace([np.inf, -np.inf], np.nan).dropna()
-        valid_flow = valid_flow[valid_flow >= 0]  # Nur positive Werte
-        weekly_agg['totalFlowARA'] = valid_flow.sum()
+        flow_ara = calculate_flow_with_time(data, 'ARA_Flow')
+        weekly_agg['totalFlowARA'] = flow_ara
     else:
-        # Fallback für andere Flow-Spalten mit "ARA" im Namen
         ara_flow_col = next((col for col in numeric_cols if 'Flow' in col and 'ARA' in col), None)
         if ara_flow_col:
-            valid_flow = data[ara_flow_col].replace([np.inf, -np.inf], np.nan).dropna()
-            valid_flow = valid_flow[valid_flow >= 0]
-            weekly_agg['totalFlowARA'] = valid_flow.sum()
+            flow_ara = calculate_flow_with_time(data, ara_flow_col)
+            weekly_agg['totalFlowARA'] = flow_ara
         else:
             weekly_agg['totalFlowARA'] = 0
     
-    # Spezifische Flow-Werte für Gerät 0058 und 0059 (falls vorhanden)
+    # Spezifische Flow-Werte für Gerät 0058 und 0059
+    flow_58 = 0.0
     if 'Flow_58' in data.columns:
-        valid_flow = data['Flow_58'].replace([np.inf, -np.inf], np.nan).dropna()
-        valid_flow = valid_flow[valid_flow >= 0]
-        weekly_agg['totalFlow58'] = valid_flow.sum()
+        flow_58 = calculate_flow_with_time(data, 'Flow_58')
+        weekly_agg['totalFlow58'] = flow_58
     
+    flow_59 = 0.0
     if 'Flow_59' in data.columns:
-        valid_flow = data['Flow_59'].replace([np.inf, -np.inf], np.nan).dropna()
-        valid_flow = valid_flow[valid_flow >= 0]
-        weekly_agg['totalFlow59'] = valid_flow.sum()
+        flow_59 = calculate_flow_with_time(data, 'Flow_59')
+        weekly_agg['totalFlow59'] = flow_59
+    
+    # Gesamtmenge der Anlagen 58 und 59 kombiniert
+    weekly_agg['totalFlow5859'] = flow_58 + flow_59 + flow_rate_59
     
     result["weeklyAggregates"] = weekly_agg
     

@@ -20,7 +20,8 @@ from modules.data_processing import (
     calculate_aggregates, 
     identify_outliers, 
     correct_outliers,
-    calculate_pump_runtime
+    calculate_pump_runtime,
+    calculate_flow_with_time
 )
 from modules.visualization import (
     create_time_series_plot, 
@@ -400,12 +401,12 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 st.metric("Gesamtmenge ARA", f"{ara_flow:.2f} m³", help="Gesamtmenge aus ARA_Flow")
             
             with col3:
-                # Gesamtmenge des Galgenkanals mit detaillierterer Anzeige
-                galgen_flow = metrics.get('totalFlowGalgenkanal', 0)
-                st.metric("Gesamtmenge Gerät 0059", f"{galgen_flow:.2f} m³", help="Gesamtmenge aus Flow_Rate_59")
+                # Gesamtmenge der Geräte 58 und 59 kombiniert
+                combined_flow = metrics.get('totalFlow5859', 0)
+                st.metric("Gesamtmenge Geräte 58+59", f"{combined_flow:.2f} m³", help="Kombinierte Gesamtmenge aller Geräte 58 und 59 Flows")
                 
             # Zweite Reihe von Metriken für zusätzliche Flow-Daten, falls vorhanden
-            if 'totalFlow58' in metrics or 'totalFlow59' in metrics:
+            if 'totalFlow58' in metrics or 'totalFlow59' in metrics or 'totalFlowGalgenkanal' in metrics:
                 col4, col5, col6 = st.columns(3)
                 
                 with col4:
@@ -414,7 +415,11 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 
                 with col5:
                     if 'totalFlow59' in metrics:
-                        st.metric("Gerät 0059 Gesamt", f"{metrics['totalFlow59']:.2f} m³", help="Gesamtmenge aus Flow_59")
+                        st.metric("Gerät 0059 (Flow_59)", f"{metrics['totalFlow59']:.2f} m³", help="Gesamtmenge aus Flow_59")
+                        
+                with col6:
+                    if 'totalFlowGalgenkanal' in metrics:
+                        st.metric("Gerät 0059 (Rate)", f"{metrics.get('totalFlowGalgenkanal', 0):.2f} m³", help="Gesamtmenge aus Flow_Rate_59")
     
     with tab2:
         st.header("Detailansicht")
@@ -691,21 +696,28 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             # Berechne Gesamtmengen für jeden Flow
             flow_totals = {}
             for col in flow_cols:
-                # Filtere negative Werte und NaN heraus
-                valid_flow = st.session_state.filtered_data[col].replace([np.inf, -np.inf], np.nan).dropna()
-                valid_flow = valid_flow[valid_flow >= 0]  # Nur positive Werte
-                
-                # Berechne Summe
-                flow_totals[col] = valid_flow.sum()
+                # Verwende die verbesserte Berechnungsmethode mit Zeitberücksichtigung
+                flow_totals[col] = calculate_flow_with_time(st.session_state.filtered_data, col)
             
             # Zeige Gesamtmengen als Metriken an
             st.subheader("Gesamtmengen im ausgewählten Zeitraum")
             
             # Flow-Spalten mit spezifischen Namen (z.B. für die Geräte 58 und 59)
             device_flows = {
-                "Flow_Rate_59": "Gesamtmenge Gerät 0059",
-                "ARA_Flow": "Gesamtmenge ARA"
+                "Flow_Rate_59": "Gerät 0059 (Rate)",
+                "ARA_Flow": "Gesamtmenge ARA",
+                "Flow_58": "Gerät 0058",
+                "Flow_59": "Gerät 0059 (Flow)"
             }
+            
+            # Berechne die kombinierte Gesamtmenge aus den Flow_58, Flow_59 und Flow_Rate_59
+            combined_flow = 0
+            for col in flow_cols:
+                if 'Flow_58' in col or 'Flow_59' in col or 'Flow_Rate_59' in col:
+                    combined_flow += flow_totals.get(col, 0)
+            
+            # Zeige die kombinierte Gesamtmenge zuerst an
+            st.info(f"Kombinierte Gesamtmenge Geräte 58+59: {combined_flow:.2f} m³")
             
             # Erstelle zwei Spalten für die Metriken
             cols = st.columns(len(flow_cols))
@@ -734,6 +746,10 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             flow_labels = [device_flows.get(col, col) for col in flow_cols]
             flow_values = [flow_totals[col] for col in flow_cols]
             
+            # Füge die kombinierte Gesamtmenge zum Balkendiagramm hinzu
+            flow_labels.append("Geräte 58+59 Kombiniert")
+            flow_values.append(combined_flow)
+            
             # Balkendiagramm erstellen
             bar_fig = go.Figure(data=[
                 go.Bar(
@@ -741,7 +757,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                     y=flow_values,
                     text=[f"{val:.2f} m³" for val in flow_values],
                     textposition='auto',
-                    marker_color=['#1f77b4', '#ff7f0e', '#2ca02c'][:len(flow_cols)]
+                    marker_color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd'][:len(flow_labels)]
                 )
             ])
             
@@ -758,12 +774,24 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             # Tägliche Statistiken
             st.subheader("Tägliche Flow-Statistiken")
             
-            # Tägliche Aggregate berechnen
-            daily_flow = st.session_state.filtered_data.copy()
-            daily_flow['Date'] = daily_flow['Time'].dt.date
+            # Tägliche Aggregate berechnen mit verbesserter Methode
+            # Gruppieren nach Datum
+            unique_dates = st.session_state.filtered_data['Time'].dt.date.unique()
+            daily_sums = pd.DataFrame({'Date': unique_dates})
             
-            # Tägliche Summen berechnen
-            daily_sums = daily_flow.groupby('Date')[flow_cols].sum().reset_index()
+            # Für jedes Datum und jede Flow-Spalte die verbesserte Berechnungsmethode anwenden
+            for col in flow_cols:
+                daily_values = []
+                
+                for date in unique_dates:
+                    # Daten für den aktuellen Tag filtern
+                    day_data = st.session_state.filtered_data[st.session_state.filtered_data['Time'].dt.date == date]
+                    # Verbesserte Berechnungsmethode anwenden
+                    flow_value = calculate_flow_with_time(day_data, col)
+                    daily_values.append(flow_value)
+                
+                # Werte zur DataFrame hinzufügen
+                daily_sums[col] = daily_values
             
             # Tabelle mit täglichen Summen anzeigen
             st.dataframe(daily_sums, use_container_width=True)
