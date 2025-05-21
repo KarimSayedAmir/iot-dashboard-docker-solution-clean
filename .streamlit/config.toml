@@ -1,0 +1,26 @@
+[theme]
+primaryColor = "#3498db"
+backgroundColor = "#f0f2f6"
+secondaryBackgroundColor = "#e0e2e6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+enableCORS = false
+enableXsrfProtection = false
+maxUploadSize = 200
+allowIframeEmbedding = true
+
+[runner]
+fastReruns = true
+magicEnabled = true
+
+[browser]
+gatherUsageStats = false
+
+[ui]
+hideTopBar = true
+hideSidebarNav = true
+
+[logger]
+level = "info" 
