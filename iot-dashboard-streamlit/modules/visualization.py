@@ -319,67 +319,76 @@ def create_heatmap(data: pd.DataFrame,
     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     heatmap_pivot = heatmap_pivot.reindex(days_order)
     
-    # Standardfarbskala
+    # Standardfarbskala - IMMER eine sichere vordefinierte Skala verwenden
     colorscale = 'Viridis'
     
-    # Überprüfen, ob ein Grenzwert für die Variable definiert ist
+    # Überprüfe auf Grenzwert
     threshold = thresholds.get(variable, None)
     
-    # Benutzdefinierte Farbskala erstellen, wenn ein Grenzwert definiert ist
-    if threshold is not None:
+    try:
         # Maximalen Wert für die Normalisierung berechnen
         max_val = heatmap_pivot.values.max()
         
-        # Sicherstellen, dass max_val gültig und positiv ist
-        if pd.notnull(max_val) and max_val > 0:
-            # Berechne den normalisierten Grenzwert (zwischen 0 und 1)
-            try:
-                norm_threshold = float(threshold) / float(max_val)
+        # Nur wenn ein Grenzwert definiert ist UND max_val gültig ist, benutzerdefinierte Farbskala versuchen
+        if threshold is not None and pd.notnull(max_val) and max_val > 0:
+            threshold_float = float(threshold)
+            max_val_float = float(max_val)
+            
+            if max_val_float > 0 and threshold_float > 0:
+                # Berechne einen sicheren normalisierten Grenzwert zwischen 0.1 und 0.9
+                norm_threshold = min(0.9, max(0.1, threshold_float / max_val_float))
                 
-                # Sicherstellen, dass norm_threshold ein gültiger Wert zwischen 0.01 und 0.99 ist
-                norm_threshold = max(0.01, min(0.99, norm_threshold))
-                
-                # Nur wenn norm_threshold gültig ist, benutzdefinierte Farbskala verwenden
-                if pd.notnull(norm_threshold):
-                    colorscale = [
-                        [0.0, 'blue'],      # Niedrige Werte = blau
-                        [norm_threshold, 'yellow'],  # Grenzwert = gelb
-                        [1.0, 'red']        # Hohe Werte = rot
-                    ]
-                else:
-                    # Fallback bei ungültigem norm_threshold
-                    colorscale = 'RdYlBu_r'
-            except (ValueError, TypeError):
-                # Fallback bei Fehler in der Berechnung
-                colorscale = 'RdYlBu_r'
-        else:
-            # Fallback bei ungültigem max_val
-            colorscale = 'RdYlBu_r'
+                # Nur eine Farbskala mit festen Werten verwenden - keine Berechnungen in der Liste
+                colorscale = [
+                    [0.0, 'blue'],
+                    [norm_threshold, 'yellow'],
+                    [1.0, 'red']
+                ]
+    except Exception as e:
+        # Bei jedem Fehler zurück zur sicheren Standardfarbskala
+        print(f"Fehler bei der Berechnung der Farbskala: {e}. Verwende Standardfarbskala.")
+        colorscale = 'RdYlBu_r'
     
-    # Heatmap erstellen mit sicherer Farbskala
-    fig = go.Figure(data=go.Heatmap(
-        z=heatmap_pivot.values,
-        x=heatmap_pivot.columns,
-        y=heatmap_pivot.index,
-        colorscale=colorscale,
-        colorbar=dict(
-            title=variable,
-            titleside="right"
-        ),
-        hovertemplate="Tag: %{y}<br>Stunde: %{x}<br>Wert: %{z:.2f}<extra></extra>"
-    ))
+    # Heatmap erstellen - mit try-except für zusätzliche Sicherheit
+    try:
+        fig = go.Figure(data=go.Heatmap(
+            z=heatmap_pivot.values,
+            x=heatmap_pivot.columns,
+            y=heatmap_pivot.index,
+            colorscale=colorscale,
+            colorbar=dict(
+                title=variable,
+                titleside="right"
+            ),
+            hovertemplate="Tag: %{y}<br>Stunde: %{x}<br>Wert: %{z:.2f}<extra></extra>"
+        ))
+    except Exception as e:
+        # Bei Fehler mit der Heatmap, erstelle eine einfachere Version ohne benutzerdefinierte Farbskala
+        print(f"Fehler beim Erstellen der Heatmap: {e}. Erstelle vereinfachte Version.")
+        fig = go.Figure(data=go.Heatmap(
+            z=heatmap_pivot.values,
+            x=heatmap_pivot.columns,
+            y=heatmap_pivot.index,
+            colorscale='Viridis',  # Garantiert sichere Standardfarbskala
+            colorbar=dict(title=variable),
+            hovertemplate="Tag: %{y}<br>Stunde: %{x}<br>Wert: %{z:.2f}<extra></extra>"
+        ))
     
     # Wenn ein Grenzwert definiert ist, Annotation hinzufügen
     if threshold is not None:
-        fig.add_annotation(
-            text=f"Grenzwert: {threshold:.2f}",
-            x=0.5,
-            y=-0.15,
-            xref="paper",
-            yref="paper",
-            showarrow=False,
-            font=dict(color="red", size=12)
-        )
+        try:
+            fig.add_annotation(
+                text=f"Grenzwert: {float(threshold):.2f}",
+                x=0.5,
+                y=-0.15,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(color="red", size=12)
+            )
+        except:
+            # Bei Fehler mit der Annotation, überspringen
+            pass
     
     # Layout anpassen
     fig.update_layout(
