@@ -82,6 +82,42 @@ Für die Bereitstellung in einer Produktionsumgebung empfehlen wir:
 3. **PythonAnywhere** oder **AWS Elastic Beanstalk**:
    - Alternative Optionen für längerfristiges Hosting
 
+## Thingsboard-Integration
+
+Das Dashboard kann direkt in Thingsboard eingebettet werden. Vollständige Dokumentation finden Sie unter `iot-dashboard-streamlit/assets/thingsboard_integration.md`.
+
+### Schnellstart zur Einbettung
+
+1. **Middleware aktivieren**:
+   ```
+   # In app.py ist bereits enthalten:
+   import middleware
+   ```
+
+2. **Streamlit mit iframe-Unterstützung starten**:
+   ```
+   python run_embedded.py
+   ```
+
+3. **HTML-Widget in Thingsboard**:
+   ```html
+   <div style="width:100%; height:100%;">
+       <iframe 
+           src="https://your-streamlit-app-url.streamlit.app/?embed=true" 
+           width="100%" 
+           height="100%" 
+           frameborder="0" 
+           style="border:0;" 
+           allowfullscreen>
+       </iframe>
+   </div>
+   ```
+
+4. **URL-Parameter für erweiterte Integration**:
+   - `embed=true` - Aktiviert den Einbettungsmodus
+   - `deviceId=YOUR_DEVICE_ID` - Übergibt die Geräte-ID
+   - `template=TEMPLATE_NAME` - Lädt ein bestimmtes Template
+
 ## Lizenz
 
 Dieses Projekt ist unter der MIT-Lizenz lizenziert. Siehe LICENSE-Datei für Details. 

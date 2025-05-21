@@ -13,6 +13,9 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 
+# Middleware für iframe-Unterstützung importieren
+import middleware
+
 # Module importieren
 from modules.data_processing import (
     parse_csv_data, 
@@ -37,6 +40,40 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# URL-Parameter für Thingsboard-Integration auslesen
+def get_url_params():
+    """
+    Liest URL-Parameter aus der Streamlit-Query aus, die für die Integration mit Thingsboard verwendet werden können
+    Returns:
+        dict: Dictionary mit URL-Parametern
+    """
+    params = {}
+    
+    # Query-Parameter auslesen
+    query_params = st.query_params.to_dict()
+    
+    # Spezielle Parameter prüfen
+    params["embed"] = query_params.get("embed", "false") == "true"
+    params["device_id"] = query_params.get("deviceId", None)
+    params["template"] = query_params.get("template", None)
+    
+    return params
+
+# URL-Parameter auslesen
+url_params = get_url_params()
+
+# Automatisch Template laden, wenn in URL-Parametern angegeben
+if url_params.get("template"):
+    template_name = url_params.get("template")
+    template_path = os.path.join('data/templates', f"{template_name}.json")
+    if os.path.exists(template_path):
+        loaded_data = load_template(template_path)
+        if isinstance(loaded_data, dict):
+            if "thresholds" in loaded_data:
+                st.session_state.thresholds = loaded_data["thresholds"]
+            if "pump_variables" in loaded_data:
+                st.session_state.pump_variables = loaded_data["pump_variables"]
 
 # Funktion zum Speichern eines Templates
 def save_template(template_name: str, template_data: Dict):
@@ -110,6 +147,13 @@ if 'auto_detect_pumps' not in st.session_state:
 
 # Sidebar für Datenupload und Filter
 with st.sidebar:
+    # Wenn im Embed-Modus, zeige einen Hinweis an
+    if url_params.get("embed"):
+        st.info("Dashboard im Embed-Modus")
+        if url_params.get("device_id"):
+            st.success(f"Gerät: {url_params.get('device_id')}")
+        st.markdown("---")
+    
     st.header("Daten und Filter")
     
     # CSV-Upload

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Streamlit Dashboard in Thingsboard</title>
+    <style>
+        /* CSS für responsive iframe-Größe */
+        .responsive-iframe-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        .responsive-iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Container für das responsive iframe -->
+    <div class="responsive-iframe-container">
+        <!-- Ersetzen Sie die URL durch Ihre Streamlit-App-URL -->
+        <iframe 
+            class="responsive-iframe"
+            src="https://your-streamlit-app-url.streamlit.app/?embed=true" 
+            allowfullscreen>
+        </iframe>
+    </div>
+
+    <!-- Optionaler JavaScript-Code für Kommunikation zwischen Thingsboard und Streamlit -->
+    <script>
+        // Hier könnte zusätzliche Logik für die Kommunikation zwischen Thingsboard und der Streamlit-App implementiert werden
+        window.addEventListener('message', function(event) {
+            // Behandlung von Nachrichten aus der Streamlit-App
+            console.log('Nachricht von Streamlit empfangen:', event.data);
+        });
+    </script>
+</body>
+</html> 
