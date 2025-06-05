@@ -523,7 +523,7 @@ with st.sidebar:
                             f"Maximalwert für {var_name}:",
                             min_value=float(0),
                             max_value=float(1000),
-                            value=float(current_threshold),
+                            value=min(float(current_threshold), 19.0),  # Clamp the value to max_value
                             step=0.1,
                             format="%.2f"
                         )
@@ -581,7 +581,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 visualization_data,  # Immer bereinigte Daten verwenden
                 primary_vars,
                 flow_vars,
-                title="IoT-Anlagen Dashboard",
+                title="",           # Removed Title because it was showing on the values.
                 time_range=st.session_state.time_range,
                 thresholds=st.session_state.thresholds
             )
@@ -642,7 +642,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             time_series_fig = create_time_series_plot(
                 visualization_data,
                 st.session_state.selected_variables,
-                title=f"Zeitreihenanalyse ({st.session_state.time_range})",
+                title= "",       #title=f"Zeitreihenanalyse ({st.session_state.time_range})",
                 height=500,
                 thresholds=st.session_state.thresholds
             )
@@ -654,21 +654,18 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         st.subheader("Tageszeit-Analyse")
         
         if st.session_state.selected_variables:
-            selected_var_for_heatmap = st.selectbox(
-                "Variable für Heatmap auswählen:",
-                st.session_state.selected_variables
-            )
-            
-            heatmap_fig = create_heatmap(
-                visualization_data,
-                selected_var_for_heatmap,
-                title=f"Tageszeitliche Verteilung: {selected_var_for_heatmap}",
-                height=500,
-                thresholds=st.session_state.thresholds
-            )
-            
-            st.plotly_chart(heatmap_fig, use_container_width=True)
-            current_figures["Heatmap"] = heatmap_fig
+            for selected_var_for_heatmap in st.session_state.selected_variables:
+                heatmap_fig = create_heatmap(
+                    visualization_data,
+                    selected_var_for_heatmap,
+                    title=f"Tageszeitliche Verteilung: {selected_var_for_heatmap}",  # Updated title
+                    height=500,
+                    thresholds=st.session_state.thresholds
+                )
+                
+                st.plotly_chart(heatmap_fig, use_container_width=True)
+                # Add each heatmap to current_figures with a unique key
+                current_figures[f"Data Intensity - {selected_var_for_heatmap}"] = heatmap_fig
     
     with current_tab[2]:
         st.header("Datenanalyse")
@@ -866,6 +863,9 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             
             st.plotly_chart(pump_fig, use_container_width=True)
             
+            # Add the Pumpen-Laufzeiten visualization to current_figures for export
+            current_figures["Pumpen-Laufzeiten"] = pump_fig
+
             # Zeitlicher Verlauf der Pumpenaktivitäten (nur wenn binäre 0/1-Daten)
             if visualization_data is not None:
                 st.subheader("Zeitlicher Verlauf der Pumpenaktivitäten")
@@ -1322,4 +1322,4 @@ else:
 
 # Fußzeile
 st.markdown("---")
-st.markdown("OWIPEX IoT-Anlagen Dashboard • Powered by Streamlit") 
+st.markdown("OWIPEX IoT-Anlagen Dashboard • Powered by Streamlit")

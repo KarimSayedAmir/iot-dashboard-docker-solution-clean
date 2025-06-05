@@ -9,6 +9,7 @@ node_modules/
 # Production
 /build
 /dist
+iot-env/
 
 # Misc
 .DS_Store
