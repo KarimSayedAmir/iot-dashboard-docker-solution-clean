@@ -5,7 +5,7 @@ Enthält Funktionen für Import, Verarbeitung und Analyse von CSV-Daten.
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 import io
 import os
 from datetime import datetime, timedelta
@@ -531,4 +531,241 @@ def calculate_aggregates(data: pd.DataFrame, pump_runtimes: Dict = None) -> Dict
     
     result["weeklyAggregates"] = weekly_agg
     
-    return result 
+    return result
+
+# Funktion zum Bereinigen der Datensätze (Neue Funktion für automatische Korrekturen)
+def clean_dataset(data: pd.DataFrame, 
+                 clean_negative_flow: bool = True,
+                 interpolate_gaps: bool = True,
+                 rolling_window: int = 5) -> pd.DataFrame:
+    """
+    Bereinigt den Datensatz automatisch:
+    - Negative Flow-Werte korrigieren
+    - Lücken interpolieren
+    - Gleitenden Durchschnitt anwenden, wenn gewünscht
+    
+    Args:
+        data: Der zu bereinigende Datensatz
+        clean_negative_flow: Ob negative Flow-Werte auf 0 gesetzt werden sollen
+        interpolate_gaps: Ob Lücken interpoliert werden sollen
+        rolling_window: Größe des gleitenden Fensters für Glättung
+        
+    Returns:
+        Bereinigter Datensatz
+    """
+    # Kopie erstellen, um das Original nicht zu verändern
+    cleaned_data = data.copy()
+    
+    # Flow-Spalten identifizieren - mit erweiterten Mustern
+    flow_columns = [col for col in cleaned_data.columns if 
+                   any(pattern in col for pattern in ['flow', 'Flow', 'ARA_Flow', 'Rate'])]
+    
+    # Negative Flow-Werte auf 0 setzen
+    if clean_negative_flow and flow_columns:
+        for col in flow_columns:
+            if col in cleaned_data.columns:
+                # Debugging-Informationen vor der Korrektur
+                neg_count_before = (cleaned_data[col] < 0).sum()
+                print(f"Spalte {col}: {neg_count_before} negative Werte gefunden")
+                
+                # Negative Werte auf 0 setzen
+                cleaned_data.loc[cleaned_data[col] < 0, col] = 0
+                
+                # Debugging-Informationen nach der Korrektur
+                neg_count_after = (cleaned_data[col] < 0).sum()
+                print(f"Spalte {col}: {neg_count_after} negative Werte nach Korrektur")
+    
+    # Lücken durch Interpolation füllen
+    if interpolate_gaps:
+        # Für jede numerische Spalte separate Interpolation durchführen
+        numeric_columns = cleaned_data.select_dtypes(include=['number']).columns
+        for col in numeric_columns:
+            # Verwende 'linear' statt 'time', da 'time' mit DatetimeArray nicht funktioniert
+            cleaned_data[col] = cleaned_data[col].interpolate(method='linear')
+    
+    return cleaned_data
+
+# Funktion zur Ausreißererkennung mit mehreren Methoden
+def remove_outliers(data: pd.DataFrame, 
+                   method: str = 'iqr',
+                   variables: List[str] = None, 
+                   threshold: float = 1.5,
+                   replace_with: str = 'nan') -> pd.DataFrame:
+    """
+    Entfernt Ausreißer aus dem Datensatz mit verschiedenen Methoden.
+    
+    Args:
+        data: Der Datensatz, aus dem Ausreißer entfernt werden sollen
+        method: Methode zur Ausreißererkennung ('iqr', 'zscore', 'percentile')
+        variables: Liste der zu bereinigenden Variablen (wenn None, werden alle numerischen Spalten verwendet)
+        threshold: Schwellenwert für die Ausreißererkennung (IQR-Multiplikator oder Z-Score)
+        replace_with: Wie Ausreißer ersetzt werden sollen ('nan', 'mean', 'median', 'interpolate', '0')
+        
+    Returns:
+        Datensatz ohne Ausreißer
+    """
+    # Kopie erstellen, um das Original nicht zu verändern
+    cleaned_data = data.copy()
+    
+    # Wenn keine Variablen angegeben sind, alle numerischen Spalten verwenden
+    if variables is None:
+        variables = cleaned_data.select_dtypes(include=['number']).columns.tolist()
+    
+    # Ausreißer für jede angegebene Variable identifizieren und ersetzen
+    for var in variables:
+        if var not in cleaned_data.columns:
+            continue
+            
+        # Methode 1: IQR-basierte Ausreißererkennung
+        if method == 'iqr':
+            Q1 = cleaned_data[var].quantile(0.25)
+            Q3 = cleaned_data[var].quantile(0.75)
+            IQR = Q3 - Q1
+            
+            lower_bound = Q1 - threshold * IQR
+            upper_bound = Q3 + threshold * IQR
+            
+            # Ausreißer identifizieren
+            outliers = (cleaned_data[var] < lower_bound) | (cleaned_data[var] > upper_bound)
+            
+        # Methode 2: Z-Score-basierte Ausreißererkennung
+        elif method == 'zscore':
+            mean = cleaned_data[var].mean()
+            std = cleaned_data[var].std()
+            
+            # Z-Score berechnen
+            z_scores = np.abs((cleaned_data[var] - mean) / std)
+            
+            # Ausreißer identifizieren
+            outliers = z_scores > threshold
+            
+        # Methode 3: Perzentil-basierte Ausreißererkennung
+        elif method == 'percentile':
+            lower_bound = cleaned_data[var].quantile(0.01)  # Unteres 1%-Perzentil
+            upper_bound = cleaned_data[var].quantile(0.99)  # Oberes 99%-Perzentil
+            
+            # Ausreißer identifizieren
+            outliers = (cleaned_data[var] < lower_bound) | (cleaned_data[var] > upper_bound)
+        
+        else:
+            # Standardmethode, falls keine gültige Methode angegeben wurde
+            return cleaned_data
+        
+        # Ausreißer ersetzen
+        if replace_with == 'nan':
+            cleaned_data.loc[outliers, var] = np.nan
+        elif replace_with == 'mean':
+            cleaned_data.loc[outliers, var] = cleaned_data[var].mean()
+        elif replace_with == 'median':
+            cleaned_data.loc[outliers, var] = cleaned_data[var].median()
+        elif replace_with == '0':
+            cleaned_data.loc[outliers, var] = 0
+    
+    # Wenn 'interpolate' gewählt wurde, füllen wir NaN-Werte mit interpolierten Werten
+    if replace_with == 'interpolate':
+        # Für jede numerische Spalte separate Interpolation durchführen
+        numeric_columns = cleaned_data.select_dtypes(include=['number']).columns
+        for col in numeric_columns:
+            # Verwende 'linear' statt 'time', da 'time' mit DatetimeArray nicht funktioniert
+            cleaned_data[col] = cleaned_data[col].interpolate(method='linear')
+    
+    return cleaned_data
+
+def clean_flow_data(data: pd.DataFrame, 
+                 min_threshold: float = 0.0,
+                 max_outlier_factor: float = 2.0) -> pd.DataFrame:
+    """
+    Spezialisierte Funktion zur Bereinigung von Flow-Daten mit erweiterter Ausreißererkennung.
+    
+    Args:
+        data: Der zu bereinigende Datensatz
+        min_threshold: Minimaler Wert für Flow-Daten (alle Werte darunter werden ersetzt)
+        max_outlier_factor: Faktor für die Identifizierung von Ausreißern nach oben 
+                           (z.B. 2.0 = Werte über dem doppelten Median werden als Ausreißer betrachtet)
+        
+    Returns:
+        Bereinigter Datensatz für Flow-Daten
+    """
+    # Kopie erstellen, um das Original nicht zu verändern
+    cleaned_data = data.copy()
+    
+    # Flow-Spalten identifizieren - mit erweitertem Muster und expliziten Spalten
+    flow_patterns = ['flow', 'Flow', 'ARA_Flow', 'Rate']
+    explicit_columns = ['Flow_Rate_58', 'Flow_Rate_59', 'ARA_Flow']
+    
+    # Spalten identifizieren, die Flow-Daten enthalten könnten
+    all_flow_columns = []
+    
+    # Musterbasierte Erkennung
+    for col in cleaned_data.columns:
+        if any(pattern in col for pattern in flow_patterns):
+            all_flow_columns.append(col)
+    
+    # Explizite Spalten hinzufügen, falls sie nicht durch das Muster erfasst wurden
+    for col in explicit_columns:
+        if col in cleaned_data.columns and col not in all_flow_columns:
+            all_flow_columns.append(col)
+    
+    print(f"Identifizierte Flow-Spalten: {all_flow_columns}")
+    
+    # Für jede Flow-Spalte die Bereinigung durchführen
+    for col in all_flow_columns:
+        if col not in cleaned_data.columns:
+            continue
+            
+        # Zuerst explizit nach negativen Werten suchen und diese auf 0 setzen
+        neg_count = (cleaned_data[col] < 0).sum()
+        if neg_count > 0:
+            print(f"Spalte {col}: {neg_count} negative Werte gefunden und auf 0 gesetzt")
+            cleaned_data.loc[cleaned_data[col] < 0, col] = 0
+            
+        # Dann alle zu kleinen Werte auf den Mindestwert setzen
+        if min_threshold > 0:
+            too_small_count = ((cleaned_data[col] < min_threshold) & (cleaned_data[col] >= 0)).sum()
+            if too_small_count > 0:
+                print(f"Spalte {col}: {too_small_count} Werte unter dem Mindestwert {min_threshold} gefunden und ersetzt")
+                cleaned_data.loc[(cleaned_data[col] < min_threshold) & (cleaned_data[col] >= 0), col] = min_threshold
+        
+        # Statistische Werte für Ausreißererkennung berechnen
+        # Verwende nur positive Werte für die Berechnung des Medians
+        positive_values = cleaned_data[col][cleaned_data[col] > 0]
+        
+        if len(positive_values) > 0:
+            median_value = positive_values.median()
+            
+            # Nur fortfahren, wenn der Median nicht zu klein ist
+            if median_value > 0.1:  # Kleiner Toleranzwert
+                upper_limit = median_value * max_outlier_factor
+                
+                # Obere Ausreißer ersetzen
+                mask_too_large = cleaned_data[col] > upper_limit
+                outliers_count = mask_too_large.sum()
+                
+                if outliers_count > 0:
+                    print(f"Spalte {col}: {outliers_count} obere Ausreißer gefunden (> {upper_limit:.2f})")
+                    
+                    # Ausreißer durch gleitenden Median ersetzen
+                    rolling_median = cleaned_data[col].rolling(window=5, center=True).median()
+                    
+                    # Fehlende Werte am Anfang und Ende durch den Median ersetzen
+                    rolling_median = rolling_median.fillna(median_value)
+                    
+                    # Ausreißer ersetzen
+                    cleaned_data.loc[mask_too_large, col] = rolling_median.loc[mask_too_large]
+            else:
+                print(f"Spalte {col}: Median zu klein ({median_value:.4f}), überspringe Ausreißererkennung")
+        else:
+            print(f"Spalte {col}: Keine positiven Werte gefunden")
+    
+    # Abschließende Prüfung auf negative Werte
+    for col in all_flow_columns:
+        if col not in cleaned_data.columns:
+            continue
+            
+        neg_count_after = (cleaned_data[col] < 0).sum()
+        if neg_count_after > 0:
+            print(f"WARNUNG: Spalte {col} enthält immer noch {neg_count_after} negative Werte nach der Bereinigung!")
+            # Sicherheitsnetz: Erzwinge positive Werte
+            cleaned_data.loc[cleaned_data[col] < 0, col] = 0
+    
+    return cleaned_data 

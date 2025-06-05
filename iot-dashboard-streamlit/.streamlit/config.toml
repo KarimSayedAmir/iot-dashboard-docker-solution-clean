@@ -9,7 +9,7 @@ font = "sans serif"
 enableCORS = false
 enableXsrfProtection = false
 maxUploadSize = 200
-allowIframeEmbedding = true
+# allowIframeEmbedding = true  # Deprecated option, removed
 
 [runner]
 fastReruns = true
@@ -20,7 +20,10 @@ gatherUsageStats = false
 
 [ui]
 hideTopBar = true
-hideSidebarNav = true
+
+[client]
+showSidebarNavigation = false
+toolbarMode = "minimal"  # Minimizes the toolbar
 
 [logger]
 level = "info" 

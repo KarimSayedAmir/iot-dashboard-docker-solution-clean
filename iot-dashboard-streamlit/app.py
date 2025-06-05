@@ -24,7 +24,10 @@ from modules.data_processing import (
     identify_outliers, 
     correct_outliers,
     calculate_pump_runtime,
-    calculate_flow_with_time
+    calculate_flow_with_time,
+    clean_dataset,
+    remove_outliers,
+    clean_flow_data
 )
 from modules.visualization import (
     create_time_series_plot, 
@@ -32,6 +35,78 @@ from modules.visualization import (
     create_heatmap,
     create_dashboard
 )
+from modules.pdf_export import export_current_view
+
+# Funktion zur Erstellung aller Visualisierungen mit bereinigten oder unbereinigten Daten
+def update_all_visualizations(data, current_figures, selected_variables, time_range, thresholds, is_cleaned=False):
+    """
+    Aktualisiert alle Visualisierungen mit den angegebenen Daten.
+    
+    Args:
+        data: DataFrame mit den zu verwendenden Daten
+        current_figures: Dictionary mit den aktuellen Visualisierungen
+        selected_variables: Liste der ausgewählten Variablen
+        time_range: Zeitraum für die Visualisierung
+        thresholds: Grenzwerte für die Visualisierung
+        is_cleaned: Ob die Daten bereits bereinigt sind
+    
+    Returns:
+        Aktualisiertes Dictionary mit den Visualisierungen
+    """
+    # Dictionary für aktualisierte Visualisierungen
+    updated_figures = current_figures.copy()
+    
+    cleaned_suffix = " (bereinigt)" if is_cleaned else ""
+    
+    # Dashboard aktualisieren
+    primary_vars = [var for var in selected_variables if var not in ['Flow_Rate_2', 'ARA_Flow']]
+    flow_vars = [var for var in ['Flow_Rate_2', 'ARA_Flow'] if var in selected_variables]
+    
+    dashboard_fig = create_dashboard(
+        data,
+        primary_vars,
+        flow_vars,
+        title=f"IoT-Anlagen Dashboard{cleaned_suffix}",
+        time_range=time_range,
+        thresholds=thresholds
+    )
+    updated_figures["Dashboard-Übersicht"] = dashboard_fig
+    
+    # Zeitreihenanalyse aktualisieren
+    time_series_fig = create_time_series_plot(
+        data,
+        selected_variables,
+        title=f"Zeitreihenanalyse{cleaned_suffix}",
+        height=500,
+        thresholds=thresholds
+    )
+    updated_figures["Zeitreihenanalyse"] = time_series_fig
+    
+    # Heatmap aktualisieren, wenn vorhanden
+    if "Heatmap" in current_figures:
+        # Wir verwenden die erste ausgewählte Variable für die Heatmap
+        if selected_variables:
+            heatmap_var = selected_variables[0]
+            heatmap_fig = create_heatmap(
+                data,
+                heatmap_var,
+                title=f"Tageszeitliche Verteilung: {heatmap_var}{cleaned_suffix}",
+                height=500
+            )
+            updated_figures["Heatmap"] = heatmap_fig
+    
+    # Flow-Visualisierung aktualisieren
+    flow_cols = [col for col in data.columns if 'flow' in col.lower() or 'Flow' in col or 'Rate' in col]
+    if flow_cols:
+        flow_fig = create_time_series_plot(
+            data,
+            flow_cols,
+            title=f"Flow-Werte im Zeitverlauf{cleaned_suffix}",
+            height=500
+        )
+        updated_figures["Flow-Visualisierung"] = flow_fig
+    
+    return updated_figures
 
 # Titel und Konfiguration der App
 st.set_page_config(
@@ -135,7 +210,12 @@ if 'custom_start_date' not in st.session_state:
 if 'custom_end_date' not in st.session_state:
     st.session_state.custom_end_date = None
 if 'thresholds' not in st.session_state:
-    st.session_state.thresholds = {}
+    # Standardgrenzwerte definieren
+    st.session_state.thresholds = {
+        'PH': 8.5,           # pH-Wert Standardgrenzwert
+        'Truebung': 20.0,    # Trübung Standardgrenzwert (mg/l)
+        'pH': 8.5            # Alternative Schreibweise für pH
+    }
 if 'available_templates' not in st.session_state:
     st.session_state.available_templates = []
 if 'pump_variables' not in st.session_state:
@@ -144,6 +224,12 @@ if 'pump_runtimes' not in st.session_state:
     st.session_state.pump_runtimes = {}
 if 'auto_detect_pumps' not in st.session_state:
     st.session_state.auto_detect_pumps = True
+if 'cleaned_data' not in st.session_state:
+    st.session_state.cleaned_data = None
+if 'cleaned_aggregates' not in st.session_state:
+    st.session_state.cleaned_aggregates = None
+if 'data_cleaned' not in st.session_state:
+    st.session_state.data_cleaned = False
 
 # Sidebar für Datenupload und Filter
 with st.sidebar:
@@ -162,8 +248,17 @@ with st.sidebar:
     if uploaded_file is not None:
         # Versuche, die Datei zu lesen
         try:
-            st.session_state.data = parse_csv_data(uploaded_file)
-            st.success(f"Datei erfolgreich geladen: {uploaded_file.name}")
+            raw_data = parse_csv_data(uploaded_file)
+            
+            # Automatische Datenbereinigung für Flow-Daten direkt beim Import
+            st.info("Führe automatische Datenbereinigung durch...")
+            
+            # Automatisch alle negativen Flow-Werte korrigieren
+            cleaned_data = clean_flow_data(raw_data, min_threshold=0.0, max_outlier_factor=2.0)
+            
+            # Bereingte Daten als Hauptdaten verwenden
+            st.session_state.data = cleaned_data
+            st.success(f"Datei erfolgreich geladen und bereinigt: {uploaded_file.name}")
             
             # Berechne Aggregate
             st.session_state.aggregates = calculate_aggregates(st.session_state.data)
@@ -192,6 +287,9 @@ with st.sidebar:
                     st.session_state.filtered_data,
                     st.session_state.pump_runtimes
                 )
+                
+            # Setze Flag, dass Daten bereits bereinigt wurden
+            st.session_state.data_cleaned = True
             
         except Exception as e:
             st.error(f"Fehler beim Laden der Datei: {e}")
@@ -228,12 +326,29 @@ with st.sidebar:
     
     # Aktualisiere die gefilterten Daten, wenn die Daten und der Zeitraum verfügbar sind
     if st.session_state.data is not None:
-        st.session_state.filtered_data = filter_by_time_range(
+        # Filtere die Daten nach dem ausgewählten Zeitraum
+        filtered_data = filter_by_time_range(
             st.session_state.data, 
             st.session_state.time_range,
             st.session_state.custom_start_date,
             st.session_state.custom_end_date
         )
+        
+        # Überprüfe und bereinige negative Flow-Werte
+        has_negative_flows = False
+        for col in filtered_data.columns:
+            if 'flow' in col.lower() or 'Flow' in col or 'Rate' in col:
+                if (filtered_data[col] < 0).sum() > 0:
+                    has_negative_flows = True
+                    break
+        
+        # Wenn negative Flow-Werte gefunden wurden, bereinige sie
+        if has_negative_flows:
+            st.warning("Es wurden negative Flow-Werte gefunden. Diese werden automatisch bereinigt.")
+            filtered_data = clean_flow_data(filtered_data, min_threshold=0.0, max_outlier_factor=2.0)
+        
+        # Speichere die gefilterten und bereinigten Daten
+        st.session_state.filtered_data = filtered_data
     
     # Variablenauswahl
     if st.session_state.data is not None:
@@ -372,28 +487,60 @@ with st.sidebar:
         
         # Grenzwerte für ausgewählte Variablen
         if st.session_state.selected_variables:
-            st.subheader("Maximalwerte definieren")
-            st.info("Definieren Sie Maximalwerte für die ausgewählten Variablen. Werte, die diese Grenzen überschreiten, werden in den Visualisierungen hervorgehoben.")
+            st.subheader("Grenzwerte definieren")
+            st.info("Definieren Sie Grenzwerte für die ausgewählten Variablen. Werte, die diese Grenzen überschreiten, werden in den Visualisierungen hervorgehoben.")
             
-            # Für jede ausgewählte Variable einen Slider anzeigen
+            # Für jede ausgewählte Variable Eingabefeld für Grenzwert anzeigen
             for var in st.session_state.selected_variables:
                 if var in st.session_state.data.columns:
-                    # Maximal- und Minimalwerte für die Variable berechnen
-                    min_val = float(st.session_state.data[var].min())
-                    max_val = float(st.session_state.data[var].max())
+                    # Standardwert ermitteln
+                    default_value = None
                     
-                    # Aktuellen Grenzwert aus dem Session State holen oder Standardwert verwenden
-                    current_threshold = st.session_state.thresholds.get(var, max_val * 0.8)
+                    # Für pH-Wert den Standardwert 8.5 verwenden
+                    if 'ph' in var.lower() or 'PH' in var:
+                        default_value = 8.5
+                        var_name = f"{var} (pH-Wert)"
+                    # Für Trübung den Standardwert 20.0 mg/l verwenden
+                    elif 'trueb' in var.lower() or 'trüb' in var.lower():
+                        default_value = 20.0
+                        var_name = f"{var} (Trübung in mg/l)"
+                    else:
+                        # Maximal- und Minimalwerte für die Variable berechnen
+                        min_val = float(st.session_state.data[var].min())
+                        max_val = float(st.session_state.data[var].max())
+                        # Standardwert: 80% des Maximalwerts wenn kein spezieller Standardwert definiert
+                        default_value = st.session_state.thresholds.get(var, max_val * 0.8)
+                        var_name = var
                     
-                    # Slider für den Grenzwert anzeigen
-                    threshold = st.slider(
-                        f"Maximalwert für {var}:",
-                        min_value=min_val,
-                        max_value=max_val,
-                        value=float(current_threshold),
-                        step=(max_val - min_val) / 100,
-                        format="%.2f"
-                    )
+                    # Eingabefeld mit Nummer anzeigen
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        # Aktuellen Grenzwert aus dem Session State holen oder Standardwert verwenden
+                        current_threshold = st.session_state.thresholds.get(var, default_value)
+                        
+                        # Nummerneingabefeld für den Grenzwert anzeigen
+                        threshold = st.number_input(
+                            f"Maximalwert für {var_name}:",
+                            min_value=float(0),
+                            max_value=float(1000),
+                            value=float(current_threshold),
+                            step=0.1,
+                            format="%.2f"
+                        )
+                    
+                    with col2:
+                        # Info-Button mit Einheiten
+                        if 'ph' in var.lower() or 'PH' in var:
+                            st.info("Einheit: pH")
+                        elif 'trueb' in var.lower() or 'trüb' in var.lower():
+                            st.info("Einheit: mg/l")
+                        elif 'flow' in var.lower() or 'Flow' in var:
+                            if 'Rate' in var:
+                                st.info("Einheit: m³/h")
+                            else:
+                                st.info("Einheit: m³")
+                        elif 'temp' in var.lower() or 'Temp' in var:
+                            st.info("Einheit: °C")
                     
                     # Grenzwert im Session State speichern
                     st.session_state.thresholds[var] = threshold
@@ -401,9 +548,28 @@ with st.sidebar:
 # Hauptbereich für Visualisierungen
 if st.session_state.data is not None and st.session_state.filtered_data is not None:
     # Tabs für verschiedene Ansichten
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Dashboard", "Detailansicht", "Datenanalyse", "Pumpen-Übersicht", "Flow-Berechnungen"])
+    tab_names = ["Dashboard", "Detailansicht", "Datenanalyse", "Pumpen-Übersicht", "Flow-Berechnungen", "Datenbereinigung & Export"]
+    current_tab = st.tabs(tab_names)
     
-    with tab1:
+    # Store figures for PDF export
+    current_figures = {}
+    
+    # Sicherstellen, dass wir keine negativen Flow-Werte in den Visualisierungen haben
+    visualization_data = st.session_state.filtered_data.copy()
+    any_negative_flows = False
+    for col in visualization_data.columns:
+        if 'flow' in col.lower() or 'Flow' in col or 'Rate' in col:
+            neg_count = (visualization_data[col] < 0).sum()
+            if neg_count > 0:
+                any_negative_flows = True
+                break
+    
+    # Wenn negative Flow-Werte gefunden wurden, diese bereinigen
+    if any_negative_flows:
+        print("Negative Flow-Werte in den Visualisierungsdaten gefunden. Automatische Bereinigung wird durchgeführt.")
+        visualization_data = clean_flow_data(visualization_data, min_threshold=0.0, max_outlier_factor=2.0)
+    
+    with current_tab[0]:
         st.header("Dashboard-Übersicht")
         
         # Dashboard mit Telemetriedaten und Gesamtmengen
@@ -412,15 +578,16 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         
         if primary_vars or flow_vars:
             dashboard_fig = create_dashboard(
-                st.session_state.filtered_data,
+                visualization_data,  # Immer bereinigte Daten verwenden
                 primary_vars,
                 flow_vars,
                 title="IoT-Anlagen Dashboard",
                 time_range=st.session_state.time_range,
-                thresholds=st.session_state.thresholds  # Grenzwerte übergeben
+                thresholds=st.session_state.thresholds
             )
             
             st.plotly_chart(dashboard_fig, use_container_width=True)
+            current_figures["Dashboard-Übersicht"] = dashboard_fig
         else:
             st.warning("Bitte wählen Sie mindestens eine Variable für die Visualisierung aus.")
         
@@ -465,7 +632,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                     if 'totalFlowGalgenkanal' in metrics:
                         st.metric("Gerät 0059 (Rate)", f"{metrics.get('totalFlowGalgenkanal', 0):.2f} m³", help="Gesamtmenge aus Flow_Rate_59")
     
-    with tab2:
+    with current_tab[1]:
         st.header("Detailansicht")
         
         # Detaillierte Zeitreihenanalyse
@@ -473,16 +640,15 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         
         if st.session_state.selected_variables:
             time_series_fig = create_time_series_plot(
-                st.session_state.filtered_data,
+                visualization_data,
                 st.session_state.selected_variables,
-                title=f"Zeitreihenanalyse ({time_range})",
+                title=f"Zeitreihenanalyse ({st.session_state.time_range})",
                 height=500,
-                thresholds=st.session_state.thresholds  # Grenzwerte übergeben
+                thresholds=st.session_state.thresholds
             )
             
             st.plotly_chart(time_series_fig, use_container_width=True)
-        else:
-            st.warning("Bitte wählen Sie mindestens eine Variable für die Visualisierung aus.")
+            current_figures["Zeitreihenanalyse"] = time_series_fig
         
         # Heatmap für ausgewählte Variable
         st.subheader("Tageszeit-Analyse")
@@ -494,7 +660,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             )
             
             heatmap_fig = create_heatmap(
-                st.session_state.filtered_data,
+                visualization_data,
                 selected_var_for_heatmap,
                 title=f"Tageszeitliche Verteilung: {selected_var_for_heatmap}",
                 height=500,
@@ -502,8 +668,9 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             )
             
             st.plotly_chart(heatmap_fig, use_container_width=True)
+            current_figures["Heatmap"] = heatmap_fig
     
-    with tab3:
+    with current_tab[2]:
         st.header("Datenanalyse")
         
         # Ausreißererkennung
@@ -532,7 +699,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             
             if st.button("Ausreißer erkennen"):
                 outlier_indices = identify_outliers(
-                    st.session_state.filtered_data,
+                    visualization_data,
                     selected_var_for_outliers,
                     method=outlier_method
                 )
@@ -546,8 +713,8 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                     # Alle Datenpunkte
                     fig.add_trace(
                         go.Scatter(
-                            x=st.session_state.filtered_data['Time'],
-                            y=st.session_state.filtered_data[selected_var_for_outliers],
+                            x=visualization_data['Time'],
+                            y=visualization_data[selected_var_for_outliers],
                             mode='lines+markers',
                             name=selected_var_for_outliers,
                             line=dict(color='blue', width=1),
@@ -556,7 +723,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                     )
                     
                     # Ausreißer hervorheben
-                    outliers = st.session_state.filtered_data.loc[outlier_indices]
+                    outliers = visualization_data.loc[outlier_indices]
                     fig.add_trace(
                         go.Scatter(
                             x=outliers['Time'],
@@ -597,14 +764,14 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                         
                         # Ausreißer korrigieren
                         corrected_data = correct_outliers(
-                            st.session_state.filtered_data,
+                            visualization_data,
                             selected_var_for_outliers,
                             outlier_indices,
                             method=correction_method
                         )
                         
                         # Aktualisiere die Daten
-                        st.session_state.filtered_data = corrected_data
+                        visualization_data = corrected_data
                         
                         st.success(f"{len(outlier_indices)} Ausreißer in '{selected_var_for_outliers}' korrigiert.")
                 else:
@@ -614,10 +781,10 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         st.subheader("Rohdaten")
         
         if st.checkbox("Rohdaten anzeigen"):
-            st.dataframe(st.session_state.filtered_data, use_container_width=True)
+            st.dataframe(visualization_data, use_container_width=True)
             
             # Daten herunterladen
-            csv_data = st.session_state.filtered_data.to_csv(index=False).encode('utf-8')
+            csv_data = visualization_data.to_csv(index=False).encode('utf-8')
             
             st.download_button(
                 label="CSV herunterladen",
@@ -627,7 +794,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             )
     
     # Neuer Tab für Pumpen-Übersicht
-    with tab4:
+    with current_tab[3]:
         st.header("Pumpen-Laufzeiten")
         
         if st.session_state.pump_variables:
@@ -637,7 +804,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             # Laufzeiten berechnen, falls noch nicht erfolgt
             if not st.session_state.pump_runtimes:
                 st.session_state.pump_runtimes = calculate_pump_runtime(
-                    st.session_state.filtered_data,
+                    visualization_data,
                     st.session_state.pump_variables
                 )
             
@@ -679,7 +846,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             pump_values = [st.session_state.pump_runtimes.get(var, 0) for var in st.session_state.pump_variables]
             
             # Balkendiagramm erstellen
-            fig = go.Figure(data=[
+            pump_fig = go.Figure(data=[
                 go.Bar(
                     x=pump_labels,
                     y=pump_values,
@@ -689,7 +856,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 )
             ])
             
-            fig.update_layout(
+            pump_fig.update_layout(
                 title="Laufzeiten der Pumpen im Vergleich",
                 xaxis_title="Pumpe",
                 yaxis_title="Laufzeit (Stunden)",
@@ -697,17 +864,17 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 template="plotly_white"
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(pump_fig, use_container_width=True)
             
             # Zeitlicher Verlauf der Pumpenaktivitäten (nur wenn binäre 0/1-Daten)
-            if st.session_state.filtered_data is not None:
+            if visualization_data is not None:
                 st.subheader("Zeitlicher Verlauf der Pumpenaktivitäten")
                 
                 # Zeitreihen-Diagramm für die Pumpenaktivitäten
                 time_series_fig = create_time_series_plot(
-                    st.session_state.filtered_data,
+                    visualization_data,
                     st.session_state.pump_variables,
-                    title=f"Pumpenaktivitäten im Zeitverlauf ({time_range})",
+                    title=f"Pumpenaktivitäten im Zeitverlauf ({st.session_state.time_range})",
                     height=500
                 )
                 
@@ -727,11 +894,11 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             """)
 
     # Neuer Tab für Flow-Berechnungen
-    with tab5:
+    with current_tab[4]:
         st.header("Flow-Berechnungen")
         
         # Identifiziere alle Flow-bezogenen Spalten
-        flow_cols = [col for col in st.session_state.data.columns if 'Flow' in col or 'flow' in col]
+        flow_cols = [col for col in visualization_data.columns if 'Flow' in col or 'flow' in col]
         
         if flow_cols:
             # Zeige eine Info über die erkannten Flow-Spalten an
@@ -741,7 +908,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             flow_totals = {}
             for col in flow_cols:
                 # Verwende die verbesserte Berechnungsmethode mit Zeitberücksichtigung
-                flow_totals[col] = calculate_flow_with_time(st.session_state.filtered_data, col)
+                flow_totals[col] = calculate_flow_with_time(visualization_data, col)
             
             # Zeige Gesamtmengen als Metriken an
             st.subheader("Gesamtmengen im ausgewählten Zeitraum")
@@ -773,18 +940,16 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                     display_name = device_flows.get(col, f"Gesamtmenge {col}")
                     st.metric(display_name, f"{flow_totals[col]:.2f} m³")
             
-            # Visualisierung der Flow-Daten
-            st.subheader("Flow-Visualisierung")
-            
-            # Zeitreihen-Diagramm für die Flow-Werte
+            # Flow-Visualisierung
             flow_fig = create_time_series_plot(
-                st.session_state.filtered_data,
+                visualization_data,
                 flow_cols,
                 title=f"Flow-Werte im Zeitverlauf ({st.session_state.time_range})",
                 height=500
             )
             
             st.plotly_chart(flow_fig, use_container_width=True)
+            current_figures["Flow-Visualisierung"] = flow_fig
             
             # Balkendiagramm für die Gesamtmengen
             flow_labels = [device_flows.get(col, col) for col in flow_cols]
@@ -820,7 +985,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             
             # Tägliche Aggregate berechnen mit verbesserter Methode
             # Gruppieren nach Datum
-            unique_dates = st.session_state.filtered_data['Time'].dt.date.unique()
+            unique_dates = visualization_data['Time'].dt.date.unique()
             daily_sums = pd.DataFrame({'Date': unique_dates})
             
             # Für jedes Datum und jede Flow-Spalte die verbesserte Berechnungsmethode anwenden
@@ -829,7 +994,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                 
                 for date in unique_dates:
                     # Daten für den aktuellen Tag filtern
-                    day_data = st.session_state.filtered_data[st.session_state.filtered_data['Time'].dt.date == date]
+                    day_data = visualization_data[visualization_data['Time'].dt.date == date]
                     # Verbesserte Berechnungsmethode anwenden
                     flow_value = calculate_flow_with_time(day_data, col)
                     daily_values.append(flow_value)
@@ -870,6 +1035,260 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             
         else:
             st.warning("Keine Flow-bezogenen Spalten in den Daten gefunden.")
+
+    with current_tab[5]:
+        st.header("Datenbereinigung & Export")
+        st.markdown("Hier können Sie die Daten bereinigen und als PDF exportieren.")
+        
+        # Zwei Spalten für Export und Datenbereinigung
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Datenbereinigungsoptionen")
+            
+            # Option zum Aktivieren der Datenbereinigung
+            enable_cleaning = st.checkbox("Datenbereinigung aktivieren", value=True)
+            
+            if enable_cleaning:
+                # Optionen für die Datenbereinigung
+                cleaning_options = st.expander("Bereinigungsoptionen anzeigen", expanded=True)
+                
+                with cleaning_options:
+                    # Negative Flow-Werte korrigieren
+                    clean_negative_flow = st.checkbox("Negative Flow-Werte auf 0 setzen", value=True)
+                    
+                    # Lücken interpolieren
+                    interpolate_gaps = st.checkbox("Datenlücken interpolieren", value=True)
+                    
+                    # Spezielle Flow-Bereinigung
+                    special_flow_cleaning = st.checkbox("Erweiterte Flow-Daten Bereinigung", value=True)
+                    
+                    if special_flow_cleaning:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            min_threshold = st.number_input("Minimalwert für Flow-Daten:", 
+                                                          value=0.0, 
+                                                          step=0.1, 
+                                                          help="Alle Werte unterhalb dieses Schwellenwerts werden ersetzt")
+                        with col2:
+                            max_outlier_factor = st.number_input("Ausreißer-Faktor:", 
+                                                               value=2.0, 
+                                                               min_value=1.1, 
+                                                               max_value=10.0, 
+                                                               step=0.1,
+                                                               help="Werte über dem X-fachen des Medians werden als Ausreißer behandelt")
+                    
+                    # Ausreißer entfernen
+                    remove_outliers_option = st.checkbox("Allgemeine Ausreißerentfernung", value=False)
+                    
+                    if remove_outliers_option:
+                        # Methode zur Ausreißererkennung
+                        outlier_method = st.selectbox(
+                            "Methode zur Ausreißererkennung:",
+                            options=["iqr", "zscore", "percentile"],
+                            format_func=lambda x: {
+                                "iqr": "IQR (Interquartilsabstand)",
+                                "zscore": "Z-Score",
+                                "percentile": "Perzentil-basiert (1% - 99%)"
+                            }.get(x, x)
+                        )
+                        
+                        # Schwellenwert für die Ausreißererkennung
+                        if outlier_method == "iqr":
+                            threshold = st.slider("IQR-Multiplikator:", 1.0, 3.0, 1.5, 0.1)
+                        elif outlier_method == "zscore":
+                            threshold = st.slider("Z-Score Schwellenwert:", 2.0, 5.0, 3.0, 0.1)
+                        else:
+                            threshold = 0  # Wird bei Perzentil-Methode nicht verwendet
+                        
+                        # Wie Ausreißer ersetzt werden sollen
+                        replace_with = st.selectbox(
+                            "Ausreißer ersetzen durch:",
+                            options=["interpolate", "mean", "median", "nan", "0"],
+                            format_func=lambda x: {
+                                "interpolate": "Interpolierte Werte",
+                                "mean": "Mittelwert",
+                                "median": "Median",
+                                "nan": "NaN (fehlende Werte)",
+                                "0": "Null"
+                            }.get(x, x)
+                        )
+                        
+                        # Variablen auswählen, für die Ausreißer entfernt werden sollen
+                        if visualization_data is not None:
+                            numeric_cols = visualization_data.select_dtypes(include=['number']).columns.tolist()
+                            outlier_variables = st.multiselect(
+                                "Variablen für die Ausreißerentfernung:",
+                                options=numeric_cols,
+                                default=st.session_state.selected_variables
+                            )
+                
+                # Button zum Anwenden der Bereinigung
+                if st.button("Daten bereinigen", key="clean_data"):
+                    if visualization_data is not None:
+                        # Daten bereinigen
+                        cleaned_data = visualization_data.copy()
+                        
+                        # Zuerst negative Flow-Werte korrigieren und Lücken interpolieren
+                        if clean_negative_flow or interpolate_gaps:
+                            st.info("Bereinige Basisdaten...")
+                            cleaned_data = clean_dataset(
+                                cleaned_data,
+                                clean_negative_flow=clean_negative_flow,
+                                interpolate_gaps=interpolate_gaps
+                            )
+                        
+                            # Spezielle Flow-Daten Bereinigung
+                            if special_flow_cleaning:
+                                st.info("Führe erweiterte Flow-Daten Bereinigung durch...")
+                                cleaned_data = clean_flow_data(
+                                    cleaned_data,
+                                    min_threshold=min_threshold if 'min_threshold' in locals() else 0.0,
+                                    max_outlier_factor=max_outlier_factor if 'max_outlier_factor' in locals() else 2.0
+                                )
+                        
+                        # Dann Ausreißer entfernen, wenn aktiviert
+                        if remove_outliers_option:
+                            st.info("Entferne allgemeine Ausreißer...")
+                            cleaned_data = remove_outliers(
+                                cleaned_data,
+                                method=outlier_method,
+                                variables=outlier_variables if 'outlier_variables' in locals() else None,
+                                threshold=threshold,
+                                replace_with=replace_with
+                            )
+                        
+                        # WICHTIG: Ersetze alle relevanten Daten in der Session mit den bereinigten Daten
+                        st.session_state.data = st.session_state.data.copy()  # Original-Daten für Referenz behalten
+                        st.session_state.filtered_data = cleaned_data  # Gefilterte Daten ersetzen
+                        st.session_state.cleaned_data = cleaned_data  # Bereinigte Daten speichern
+                        
+                        # Aggregate neu berechnen
+                        st.session_state.aggregates = calculate_aggregates(cleaned_data)  # Direkt Hauptaggregate ersetzen
+                        st.session_state.cleaned_aggregates = st.session_state.aggregates  # Kopie für Referenz
+                        
+                        # Alle Visualisierungen mit bereinigten Daten aktualisieren
+                        st.info("Aktualisiere alle Visualisierungen...")
+                        
+                        # Aktualisiere alle Visualisierungen mit der neuen Funktion
+                        current_figures = update_all_visualizations(
+                            cleaned_data,
+                            current_figures,
+                            st.session_state.selected_variables,
+                            st.session_state.time_range,
+                            st.session_state.thresholds,
+                            is_cleaned=True
+                        )
+                        
+                        # Erfolg anzeigen
+                        st.success("Daten wurden erfolgreich bereinigt! Alle Visualisierungen wurden aktualisiert.")
+                        
+                        # Zeige die Visualisierung direkt im Bereich an
+                        if "Flow-Visualisierung" in current_figures:
+                            st.subheader("Bereinigte Flow-Visualisierung")
+                            st.plotly_chart(current_figures["Flow-Visualisierung"], use_container_width=True)
+                        
+                        # Zeige Statistiken zu den bereinigten Daten an
+                        flow_cols = [col for col in cleaned_data.columns if 'flow' in col.lower() or 'Flow' in col or 'Rate' in col]
+                        if flow_cols and "Flow-Visualisierung" in current_figures:
+                            st.subheader("Statistik der bereinigten Flow-Daten")
+                            stats_cols = st.columns(len(flow_cols))
+                            for i, col in enumerate(flow_cols):
+                                with stats_cols[i]:
+                                    st.metric(
+                                        label=f"{col} Median", 
+                                        value=f"{cleaned_data[col].median():.2f} m³/h"
+                                    )
+                                    st.metric(
+                                        label=f"{col} Max", 
+                                        value=f"{cleaned_data[col].max():.2f} m³/h"
+                                    )
+                                    st.metric(
+                                        label=f"{col} Min", 
+                                        value=f"{cleaned_data[col].min():.2f} m³/h"
+                                    )
+                                    
+                        # Flag setzen, dass Daten bereinigt wurden und Session-State-Aktualisierung erzwingen
+                        st.session_state.data_cleaned = True
+                        
+                        # Seite neu laden, um sicherzustellen, dass alle Tabs die bereinigten Daten verwenden
+                        st.rerun()
+                    else:
+                        st.warning("Keine Daten zum Bereinigen vorhanden.")
+            
+        with col2:
+            st.subheader("PDF Export")
+            
+            # Zeige an, welche Visualisierungen exportiert werden
+            if current_figures:
+                st.info(f"Folgende Visualisierungen werden exportiert: {', '.join(current_figures.keys())}")
+                
+                # Status der Datenbereinigung anzeigen
+                data_cleaned_status = st.session_state.get("data_cleaned", False)
+                
+                if data_cleaned_status:
+                    st.success("Die Daten wurden bereinigt. Der Export wird die bereinigten Daten verwenden.")
+                else:
+                    st.warning("Die Daten wurden noch nicht bereinigt. Klicken Sie auf 'Daten bereinigen', um die Daten vor dem Export zu bereinigen.")
+                
+                if st.button("PDF Export erstellen"):
+                    try:
+                        # Verwende die gefilterten Daten
+                        export_data = visualization_data.copy()
+                        export_aggregates = st.session_state.aggregates
+                        
+                        # Immer eine finale Prüfung auf negative Flow-Werte durchführen
+                        need_final_cleaning = False
+                        for col in export_data.columns:
+                            if 'Flow' in col or 'flow' in col or 'Rate' in col:
+                                neg_count = (export_data[col] < 0).sum()
+                                if neg_count > 0:
+                                    need_final_cleaning = True
+                                    st.warning(f"⚠️ {col}: {neg_count} negative Werte gefunden! Diese werden für den Export korrigiert.")
+                        
+                        # Falls nötig, führe eine finale Bereinigung durch
+                        if need_final_cleaning:
+                            export_data = clean_flow_data(export_data, min_threshold=0.0, max_outlier_factor=2.0)
+                            st.success("Finale Datenbereinigung für den Export durchgeführt.")
+                            
+                            # Statistik für bereinigte Daten anzeigen
+                            flow_cols = [col for col in export_data.columns if 'flow' in col.lower() or 'Flow' in col or 'Rate' in col]
+                            if flow_cols:
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Negative Flow-Werte", "0")
+                                with col2:
+                                    st.metric("Bereinigter Zeitraum", f"{export_data.index.min().strftime('%d.%m.%Y')} - {export_data.index.max().strftime('%d.%m.%Y')}")
+                                with col3:
+                                    st.metric("Datenpunkte", f"{len(export_data)}")
+                        
+                        # Export durchführen
+                        pdf_path = export_current_view(
+                            export_data,
+                            current_figures,
+                            st.session_state.selected_variables,
+                            export_aggregates
+                        )
+                        
+                        # Create download button for the PDF
+                        with open(pdf_path, "rb") as pdf_file:
+                            pdf_bytes = pdf_file.read()
+                        
+                        st.download_button(
+                            label="PDF herunterladen",
+                            data=pdf_bytes,
+                            file_name=pdf_path.split('/')[-1],
+                            mime="application/pdf"
+                        )
+                        
+                        st.success(f"PDF wurde erfolgreich erstellt mit {'bereinigten' if data_cleaned_status else 'original'} Daten!")
+                        
+                        # Clean up the temporary file
+                        os.remove(pdf_path)
+                    except Exception as e:
+                        st.error(f"Fehler beim Erstellen des PDFs: {str(e)}")
+            else:
+                st.warning("Keine Visualisierungen verfügbar. Bitte wählen Sie zuerst Variablen aus und erstellen Sie Visualisierungen.")
 
 else:
     # Keine Daten vorhanden

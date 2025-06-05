@@ -87,6 +87,17 @@
 ## Laufende Aufgaben
 - Verbesserte Datenprozessierung und Ausreißererkennung
 - Optimierung der Benutzeroberfläche für bessere Übersichtlichkeit
+- Implementierung von Einheiten für Messwerte:
+  - Trübung: mg/l
+  - Durchfluss: m³/h
+  - Gesamtdurchfluss: m³
+  - PH-Wert: pH
+  - Temperatur: °C
+- PDF Export-Funktionalität:
+  - Implementierung eines PDF-Exporters für alle Seiten
+  - Einbindung von Diagrammen und Tabellen im PDF
+  - Formatierung und Layout-Optimierung für PDF-Ausgabe
+  - Hinzufügen von Einheiten in den PDF-Export
 
 ## Zukünftige Verbesserungen
 - Integration von Realtime-Updates aus IoT-Geräten

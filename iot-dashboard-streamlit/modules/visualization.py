@@ -8,129 +8,168 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from typing import Dict, List, Optional, Tuple, Union
+from datetime import datetime, timedelta
+import numpy as np
 
-def create_time_series_plot(data: pd.DataFrame, 
-                           variables: List[str],
-                           title: str = "Zeitreihe der Sensordaten",
-                           height: int = 500,
-                           thresholds: Dict[str, float] = None) -> go.Figure:
-    """
-    Erstellt ein Zeitreihendiagramm für die angegebenen Variablen.
+# Define units for each measurement type
+UNITS = {
+    'Truebung': 'mg/l',
+    'Trübung': 'mg/l',
+    'Flow_Rate': 'm³/h',
+    'Flow_Rate_2': 'm³/h',
+    'Flow_Rate_58': 'm³/h',
+    'Flow_Rate_59': 'm³/h',
+    'ARA_Flow': 'm³/h',
+    'Flow_58': 'm³',
+    'Flow_59': 'm³',
+    'PH': 'pH',
+    'pH': 'pH',
+    'Temperature': '°C',
+    'Temp': '°C',
+    'total_flow': 'm³'
+}
+
+def get_unit_for_variable(variable_name: str) -> str:
+    """Get the appropriate unit for a variable."""
+    # Check for exact matches first
+    if variable_name in UNITS:
+        return UNITS[variable_name]
     
-    Args:
-        data: DataFrame mit den Daten
-        variables: Liste der darzustellenden Variablen
-        title: Titel des Diagramms
-        height: Höhe des Diagramms in Pixeln
-        thresholds: Dictionary mit Grenzwerten für Variablen {variable_name: threshold_value}
-        
-    Returns:
-        Plotly-Figur mit dem Zeitreihendiagramm
-    """
-    if data.empty:
-        # Leeres Diagramm zurückgeben, wenn keine Daten vorhanden sind
-        fig = go.Figure()
-        fig.update_layout(
-            title=title,
-            xaxis_title="Zeit",
-            yaxis_title="Wert",
-            height=height,
-            template="plotly_white"
-        )
-        return fig
+    # Check for partial matches
+    for key in UNITS:
+        if key.lower() in variable_name.lower():
+            return UNITS[key]
     
-    # Kopie der Daten erstellen, um die Originaldaten nicht zu verändern
+    return ''
+
+def create_time_series_plot(data: pd.DataFrame,
+                          variables: List[str],
+                          title: str = "Zeitreihenanalyse",
+                          height: int = 600,
+                          thresholds: Dict = None,
+                          pump_variables: List[str] = None) -> go.Figure:
+    """Create a time series plot for selected variables."""
+    # Daten kopieren und bereinigen
     plot_data = data.copy()
     
-    # Sicherstellen, dass die Zeit-Spalte im richtigen Format ist
-    if not pd.api.types.is_datetime64_any_dtype(plot_data['Time']):
-        try:
-            plot_data['Time'] = pd.to_datetime(plot_data['Time'])
-        except:
-            print("Fehler beim Konvertieren der Zeitstempel für die Visualisierung.")
+    # Wenn keine Zeitstempel-Spalte vorhanden ist, aktuelle Zeit verwenden
+    if 'Time' not in plot_data.columns and isinstance(plot_data.index, pd.DatetimeIndex):
+        plot_data['Time'] = plot_data.index
     
-    # Figur initialisieren
+    # Figure erstellen
     fig = go.Figure()
     
-    # Pumpen-Variablen erkennen (für spezielle Behandlung)
-    pump_variables = [var for var in variables if "Pump" in var]
+    # Farbschema für die Linien
+    color_map = {
+        'Pump_58': '#E63946',  # Rot
+        'Pump_59': '#457B9D',  # Blau
+        'Flow_Rate_58': '#F4A261',  # Orange
+        'Flow_Rate_59': '#2A9D8F',  # Grün
+        'ARA_Flow': '#023E8A'   # Dunkelblau
+    }
     
-    # Für jede Variable eine Trace hinzufügen
+    # Prüfen, ob Variablen existieren
+    plot_vars = []
     for var in variables:
         if var in plot_data.columns:
-            # Boolean- oder String-Werte in numerische Werte konvertieren (speziell für Pumpen)
-            if var in pump_variables:
-                # Für boolean-Werte
-                if plot_data[var].dtype == 'bool':
-                    plot_data[var] = plot_data[var].astype(int)
-                # Für string-basierte true/false Werte
-                elif plot_data[var].dtype == 'object':
-                    try:
-                        # Prüfen, ob es sich um 'true'/'false' Strings handelt
-                        if plot_data[var].astype(str).str.lower().str.contains('true').any() or \
-                           plot_data[var].astype(str).str.lower().str.contains('false').any():
-                            plot_data[var] = plot_data[var].astype(str).str.lower().str.contains('true').astype(int)
-                        else:
-                            # Wenn nicht, versuchen als Zahl zu interpretieren
-                            plot_data[var] = pd.to_numeric(plot_data[var], errors='coerce').fillna(0)
-                    except:
-                        print(f"Warnung: Konnte Variable {var} nicht für die Visualisierung konvertieren.")
+            plot_vars.append(var)
+    
+    for var in plot_vars:
+        # Get the unit for the variable
+        unit = get_unit_for_variable(var)
+        # Add unit to the name if available
+        var_name = f"{var} [{unit}]" if unit else var
+        
+        # Boolean- oder String-Werte in numerische Werte konvertieren (speziell für Pumpen)
+        if pump_variables is not None and var in pump_variables:
+            # Wenn die Variable eine Pumpenvariable ist
+            
+            # Anzeigenamen für die Legende anpassen
+            display_name = var_name
+            if var == "Pump_58":
+                display_name = "Pumpe 1 (Gerät 0058)"
+            elif var == "Pump_59":
+                display_name = "Pumpe 2 (Gerät 0059)"
+            
+            if plot_data[var].dtype == 'bool':
+                # Boolean-Werte in 0 und 1 konvertieren
+                plot_data[var] = plot_data[var].astype(int)
                 
-                # Fehlende Werte als 0 interpretieren
-                plot_data[var] = plot_data[var].fillna(0)
-                
-                # Werte > 0 als 1 (AN) interpretieren für die Visualisierung
-                plot_data[var] = (plot_data[var] > 0).astype(int)
-                
-                # Anzeigenamen für die Legende anpassen
-                display_name = var
-                if var == "Pump_58":
-                    display_name = "Pumpe 1 (Gerät 0058)"
-                elif var == "Pump_59":
-                    display_name = "Pumpe 2 (Gerät 0059)"
-                
-                # Pumpen als Stufendiagramm darstellen
+                # Spezielle Darstellung für Pumpenaktivität
                 fig.add_trace(
                     go.Scatter(
                         x=plot_data['Time'],
                         y=plot_data[var],
                         mode='lines',
                         name=display_name,
-                        line=dict(shape='hv', width=2),  # Stufenform für Pumpen
-                        line_color="green" if "Pump_58" in var else "blue"  # Farbe anpassen
+                        line=dict(color=color_map.get(var, 'blue'), width=2)
                     )
                 )
             else:
-                # Normaler Trace für nicht-Pumpen-Variablen
+                # Normale Darstellung für numerische Werte
                 fig.add_trace(
                     go.Scatter(
                         x=plot_data['Time'],
                         y=plot_data[var],
                         mode='lines',
-                        name=var
+                        name=display_name
                     )
                 )
+        else:
+            # Standardverhalten für andere Variablen
+            fig.add_trace(
+                go.Scatter(
+                    x=plot_data['Time'],
+                    y=plot_data[var],
+                    mode='lines',
+                    name=var_name
+                )
+            )
+        
+        # Grenzwerte hinzufügen, wenn vorhanden
+        if thresholds and var in thresholds:
+            # Grenzwert-Linie mit verbesserter Sichtbarkeit
+            fig.add_trace(
+                go.Scatter(
+                    x=[plot_data['Time'].iloc[0], plot_data['Time'].iloc[-1]],
+                    y=[thresholds[var], thresholds[var]],
+                    mode='lines',
+                    name=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                    line=dict(color='red', width=2, dash='dash'),
+                    fill='tonexty',  # Füllung zwischen Linie und oberem Rand
+                    fillcolor='rgba(255, 0, 0, 0.1)'  # Leichte rote Färbung
+                )
+            )
             
-            # Grenzwerte als horizontale Linie hinzufügen, falls vorhanden
-            if thresholds and var in thresholds:
-                fig.add_trace(
-                    go.Scatter(
-                        x=[plot_data['Time'].min(), plot_data['Time'].max()],
-                        y=[thresholds[var], thresholds[var]],
-                        mode='lines',
-                        name=f"Grenzwert: {var}",
-                        line=dict(color='red', width=1, dash='dash')
-                    )
-                )
+            # Text-Label für den Grenzwert
+            fig.add_annotation(
+                x=plot_data['Time'].iloc[-1],
+                y=thresholds[var],
+                text=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor='red',
+                bgcolor='white',
+                bordercolor='red'
+            )
     
-    # Layout anpassen
     fig.update_layout(
         title=title,
         xaxis_title="Zeit",
         yaxis_title="Wert",
         height=height,
-        template="plotly_white",
-        hovermode="x unified"
+        showlegend=True,
+        hovermode='x unified',
+        margin=dict(t=100),  # Mehr Platz oben für Annotationen
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     return fig
@@ -227,15 +266,20 @@ def create_bar_chart(data: pd.DataFrame,
     fig = go.Figure()
     
     for i, var in enumerate(plot_vars):
+        # Get the unit for the variable
+        unit = get_unit_for_variable(var)
+        # Add unit to the name if available
+        var_name = f"{var} [{unit}]" if unit else var
+        
         # Farbe auswählen
         color = color_map.get(var, px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)])
         
         # Balken hinzufügen
         fig.add_trace(
             go.Bar(
-                x=[var],
+                x=[var_name],
                 y=[agg_data[var]],
-                name=var,
+                name=var_name,
                 marker_color=color,
                 text=[f"{agg_data[var]:.2f}"],
                 textposition="auto"
@@ -246,7 +290,7 @@ def create_bar_chart(data: pd.DataFrame,
     fig.update_layout(
         title=title,
         xaxis_title="Variable",
-        yaxis_title=f"{aggregate_func.capitalize()}",
+        yaxis_title=f"{aggregate_func.capitalize()} [{unit}]" if unit else f"{aggregate_func.capitalize()}",
         height=height,
         template="plotly_white",
         showlegend=False
@@ -401,201 +445,135 @@ def create_heatmap(data: pd.DataFrame,
     
     return fig
 
-def create_dashboard(data: pd.DataFrame, 
-                    primary_vars: List[str], 
+def create_dashboard(data: pd.DataFrame,
+                    primary_vars: List[str],
                     flow_vars: List[str],
-                    title: str = "IoT-Anlagen Dashboard",
-                    time_range: str = 'week',
-                    thresholds: Dict[str, float] = None) -> go.Figure:
-    """
-    Erstellt ein Dashboard mit mehreren Visualisierungen.
+                    title: str = "Dashboard",
+                    time_range: str = "day",
+                    thresholds: Dict = None) -> go.Figure:
+    """Create a dashboard with multiple plots."""
+    # Calculate number of rows needed
+    n_rows = len(primary_vars) + (1 if flow_vars else 0)
     
-    Args:
-        data: DataFrame mit den Daten
-        primary_vars: Liste der primären Variablen (PH, Temperatur, etc.)
-        flow_vars: Liste der Durchflussvariablen
-        title: Titel des Dashboards
-        time_range: Zeitraum ('day', 'week', 'custom')
-        thresholds: Dictionary mit Grenzwerten für Variablen {variable_name: threshold_value}
-        
-    Returns:
-        Plotly-Figur mit dem Dashboard
-    """
-    if data.empty:
-        # Leeres Diagramm zurückgeben
-        fig = go.Figure()
-        fig.update_layout(
-            title=title,
-            height=700,
-            template="plotly_white"
-        )
-        fig.add_annotation(
-            text="Keine Daten verfügbar",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(size=20)
-        )
-        return fig
-    
-    # Grenzwerte initialisieren
-    if thresholds is None:
-        thresholds = {}
-    
-    # Subplots erstellen
-    n_rows = 2 if flow_vars else 1
     fig = make_subplots(
-        rows=n_rows, cols=1,
-        subplot_titles=([f"Telemetrie-Daten ({time_range})"] +
-                        ([f"Durchflussraten ({time_range})"] if flow_vars else [])),
-        vertical_spacing=0.1,
-        row_heights=[0.7, 0.3] if flow_vars else [1]
+        rows=n_rows,
+        cols=1,
+        subplot_titles=[f"{var} [{get_unit_for_variable(var)}]" if get_unit_for_variable(var) else var 
+                       for var in primary_vars + (flow_vars if flow_vars else [])],
+        vertical_spacing=0.1
     )
     
-    # Farben für die verschiedenen Variablen
+    # Color definitions for consistent visualization
     color_map = {
-        'PH_58': '#0066cc',
-        'Trübung_Zulauf': '#ff9900',
-        'Water_Level': '#00cc66',
-        'Flow_Rate_2': '#cc0066',
-        'ARA_Flow': '#9933cc',
-        'Pumpdauer': '#ff6600'
+        'Pump_58': '#E63946',  # Rot
+        'Pump_59': '#457B9D',  # Blau
+        'Flow_Rate_58': '#F4A261',  # Orange
+        'Flow_Rate_59': '#2A9D8F',  # Grün
+        'ARA_Flow': '#023E8A'   # Dunkelblau
     }
     
-    # Standardfarben für nicht definierte Variablen
-    default_colors = px.colors.qualitative.Plotly
-    
-    # Telemetrie-Daten hinzufügen (oberer Plot)
-    for i, var in enumerate(primary_vars):
-        if var in data.columns:
-            # Farbe auswählen
-            color = color_map.get(var, default_colors[i % len(default_colors)])
-            
-            # Linie hinzufügen
+    # Add primary variables
+    for i, var in enumerate(primary_vars, 1):
+        unit = get_unit_for_variable(var)
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data[var],
+                name=f"{var} [{unit}]" if unit else var,
+                mode='lines',
+                line=dict(color=color_map.get(var, None))
+            ),
+            row=i,
+            col=1
+        )
+        
+        # Add threshold line with improved visibility if available
+        if thresholds and var in thresholds:
+            # Add threshold line
             fig.add_trace(
                 go.Scatter(
-                    x=data['Time'],
-                    y=data[var],
+                    x=[data.index[0], data.index[-1]],
+                    y=[thresholds[var], thresholds[var]],
                     mode='lines',
-                    name=var,
-                    line=dict(color=color, width=2),
-                    hovertemplate="%{y:.2f}<extra>%{x}</extra>"
+                    name=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                    line=dict(color='red', width=2, dash='dash'),
+                    fill='tonexty',  # Fill area above the line
+                    fillcolor='rgba(255, 0, 0, 0.1)'  # Light red color
                 ),
-                row=1, col=1
+                row=i,
+                col=1
             )
             
-            # Wenn ein Grenzwert definiert ist, Werte oberhalb des Grenzwerts hervorheben
-            threshold = thresholds.get(var, None)
-            if threshold is not None:
-                # Maske für Werte, die den Grenzwert überschreiten
-                mask = data[var] > threshold
-                
-                if mask.any():
-                    # Hervorhebung der Werte oberhalb des Grenzwerts
-                    fig.add_trace(
-                        go.Scatter(
-                            x=data.loc[mask, 'Time'],
-                            y=data.loc[mask, var],
-                            mode='markers',
-                            marker=dict(
-                                color='red',
-                                size=8,
-                                symbol='circle',
-                                line=dict(
-                                    color='black',
-                                    width=1
-                                )
-                            ),
-                            name=f"{var} > {threshold:.2f}",
-                            hovertemplate="%{y:.2f} (ÜBERSCHREITUNG)<extra>%{x}</extra>"
-                        ),
-                        row=1, col=1
-                    )
-                    
-                    # Horizontale Linie für den Grenzwert hinzufügen
-                    fig.add_shape(
-                        type="line",
-                        x0=data['Time'].min(),
-                        x1=data['Time'].max(),
-                        y0=threshold,
-                        y1=threshold,
-                        line=dict(
-                            color="red",
-                            width=2,
-                            dash="dash",
-                        ),
-                        row=1, col=1
-                    )
+            # Add annotation for threshold
+            fig.add_annotation(
+                x=data.index[-1],
+                y=thresholds[var],
+                text=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor='red',
+                bgcolor='white',
+                bordercolor='red',
+                row=i,
+                col=1
+            )
     
-    # Durchflussraten hinzufügen (unterer Plot, falls vorhanden)
-    if flow_vars and n_rows > 1:
-        for i, var in enumerate(flow_vars):
-            if var in data.columns:
-                # Farbe auswählen
-                color = color_map.get(var, default_colors[(i + len(primary_vars)) % len(default_colors)])
-                
-                # Linie hinzufügen
+    # Add flow variables if present
+    if flow_vars:
+        for var in flow_vars:
+            unit = get_unit_for_variable(var)
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data[var],
+                    name=f"{var} [{unit}]" if unit else var,
+                    mode='lines',
+                    line=dict(color=color_map.get(var, None))
+                ),
+                row=n_rows,
+                col=1
+            )
+            
+            # Add threshold for flow variables too
+            if thresholds and var in thresholds:
                 fig.add_trace(
                     go.Scatter(
-                        x=data['Time'],
-                        y=data[var],
+                        x=[data.index[0], data.index[-1]],
+                        y=[thresholds[var], thresholds[var]],
                         mode='lines',
-                        name=var,
-                        line=dict(color=color, width=2),
-                        hovertemplate="%{y:.2f}<extra>%{x}</extra>"
+                        name=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                        line=dict(color='red', width=2, dash='dash'),
+                        fill='tonexty',
+                        fillcolor='rgba(255, 0, 0, 0.1)'
                     ),
-                    row=2, col=1
+                    row=n_rows,
+                    col=1
                 )
                 
-                # Wenn ein Grenzwert definiert ist, Werte oberhalb des Grenzwerts hervorheben
-                threshold = thresholds.get(var, None)
-                if threshold is not None:
-                    # Maske für Werte, die den Grenzwert überschreiten
-                    mask = data[var] > threshold
-                    
-                    if mask.any():
-                        # Hervorhebung der Werte oberhalb des Grenzwerts
-                        fig.add_trace(
-                            go.Scatter(
-                                x=data.loc[mask, 'Time'],
-                                y=data.loc[mask, var],
-                                mode='markers',
-                                marker=dict(
-                                    color='red',
-                                    size=8,
-                                    symbol='circle',
-                                    line=dict(
-                                        color='black',
-                                        width=1
-                                    )
-                                ),
-                                name=f"{var} > {threshold:.2f}",
-                                hovertemplate="%{y:.2f} (ÜBERSCHREITUNG)<extra>%{x}</extra>"
-                            ),
-                            row=2, col=1
-                        )
-                        
-                        # Horizontale Linie für den Grenzwert hinzufügen
-                        fig.add_shape(
-                            type="line",
-                            x0=data['Time'].min(),
-                            x1=data['Time'].max(),
-                            y0=threshold,
-                            y1=threshold,
-                            line=dict(
-                                color="red",
-                                width=2,
-                                dash="dash",
-                            ),
-                            row=2, col=1
-                        )
+                # Add annotation for flow threshold
+                fig.add_annotation(
+                    x=data.index[-1],
+                    y=thresholds[var],
+                    text=f"Grenzwert: {thresholds[var]:.2f} {unit}",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowwidth=2,
+                    arrowcolor='red',
+                    bgcolor='white',
+                    bordercolor='red',
+                    row=n_rows,
+                    col=1
+                )
     
-    # Layout anpassen
     fig.update_layout(
+        height=300 * n_rows,
         title=title,
-        height=700,
-        template="plotly_white",
-        hovermode="x unified",
+        showlegend=True,
+        hovermode='x unified',
+        margin=dict(t=100, r=150),  # Extra margin for annotations
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -605,12 +583,9 @@ def create_dashboard(data: pd.DataFrame,
         )
     )
     
-    # X-Achsenbeschriftungen
-    fig.update_xaxes(title_text="Zeit", row=n_rows, col=1)
-    
-    # Y-Achsenbeschriftungen
-    fig.update_yaxes(title_text="Wert", row=1, col=1)
-    if n_rows > 1:
-        fig.update_yaxes(title_text="Durchfluss (m³)", row=2, col=1)
+    # Update y-axis titles with units
+    for i, var in enumerate(primary_vars + (flow_vars if flow_vars else []), 1):
+        unit = get_unit_for_variable(var)
+        fig.update_yaxes(title_text=f"Wert [{unit}]" if unit else "Wert", row=i, col=1)
     
     return fig 
