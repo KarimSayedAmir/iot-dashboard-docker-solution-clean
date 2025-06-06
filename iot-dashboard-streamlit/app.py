@@ -569,6 +569,14 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         print("Negative Flow-Werte in den Visualisierungsdaten gefunden. Automatische Bereinigung wird durchgeführt.")
         visualization_data = clean_flow_data(visualization_data, min_threshold=0.0, max_outlier_factor=2.0)
     
+    # Replace turbidity values > 1000 with previous value for all relevant columns
+    for col in visualization_data.columns:
+        col_lower = col.lower()
+        if 'trueb' in col_lower or 'trüb' in col_lower or 'trubid' in col_lower:
+            turbidity = visualization_data[col]
+            # Replace values > 1000 with np.nan, then forward-fill
+            visualization_data[col] = turbidity.mask(turbidity > 1000).ffill()
+    
     with current_tab[0]:
         st.header("Dashboard-Übersicht")
         
@@ -577,17 +585,30 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
         flow_vars = [var for var in ['Flow_Rate_2', 'ARA_Flow'] if var in st.session_state.selected_variables]
         
         if primary_vars or flow_vars:
-            dashboard_fig = create_dashboard(
-                visualization_data,  # Immer bereinigte Daten verwenden
-                primary_vars,
-                flow_vars,
-                title="",           # Removed Title because it was showing on the values.
-                time_range=st.session_state.time_range,
-                thresholds=st.session_state.thresholds
-            )
+            for var in primary_vars + flow_vars:
+                single_fig = create_time_series_plot(
+                    visualization_data,
+                    [var],
+                    title=var,
+                    height=500,  # Same as heatmap
+                    thresholds=st.session_state.thresholds
+                )
+                st.plotly_chart(single_fig, use_container_width=True)
+                current_figures[f"Dashboard-Übersicht - {var}"] = single_fig
             
-            st.plotly_chart(dashboard_fig, use_container_width=True)
-            current_figures["Dashboard-Übersicht"] = dashboard_fig
+            # Show date and time range below the chart
+            if not visualization_data.empty and "Time" in visualization_data.columns:
+                # Ensure Time column is datetime
+                if not np.issubdtype(visualization_data["Time"].dtype, np.datetime64):
+                    visualization_data["Time"] = pd.to_datetime(visualization_data["Time"], errors="coerce")
+                min_time = visualization_data["Time"].min()
+                max_time = visualization_data["Time"].max()
+                st.markdown(
+                    f"<div style='text-align:center; margin-top: 10px; color: #666;'>"
+                    f"Zeitraum: <b>{min_time.strftime('%d.%m.%Y %H:%M')}</b> bis <b>{max_time.strftime('%d.%m.%Y %H:%M')}</b>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
         else:
             st.warning("Bitte wählen Sie mindestens eine Variable für die Visualisierung aus.")
         
@@ -1208,14 +1229,7 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                                         value=f"{cleaned_data[col].min():.2f} m³/h"
                                     )
                                     
-                        # Flag setzen, dass Daten bereinigt wurden und Session-State-Aktualisierung erzwingen
-                        st.session_state.data_cleaned = True
-                        
-                        # Seite neu laden, um sicherzustellen, dass alle Tabs die bereinigten Daten verwenden
-                        st.rerun()
-                    else:
-                        st.warning("Keine Daten zum Bereinigen vorhanden.")
-            
+                        # Flag
         with col2:
             st.subheader("PDF Export")
             
