@@ -424,23 +424,23 @@ def create_heatmap(data: pd.DataFrame,
             fig.add_annotation(
                 text=f"Grenzwert: {float(threshold):.2f}",
                 x=0.5,
-                y=-0.15,
+                y=-0.35,  # Move even further down
                 xref="paper",
                 yref="paper",
                 showarrow=False,
-                font=dict(color="red", size=12)
+                font=dict(color="red", size=14)
             )
-        except:
-            # Bei Fehler mit der Annotation, überspringen
-            pass
+        except Exception as e:
+            print(f"Fehler beim Hinzufügen der Grenzwert-Annotation: {e}")
     
     # Layout anpassen
     fig.update_layout(
         title=title,
         xaxis_title="Stunde",
         yaxis_title="Tag",
-        height=height,
-        template="plotly_white"
+        height=480,  # or your preferred height
+        template="plotly_white",
+        margin=dict(l=60, r=30, t=60, b=200)  # Increase bottom margin further
     )
     
     return fig
@@ -569,11 +569,11 @@ def create_dashboard(data: pd.DataFrame,
                 )
     
     fig.update_layout(
-        height=300 * n_rows,
+        height=480,  # Decrease by 20px to make space for annotation
         title=title,
         showlegend=True,
         hovermode='x unified',
-        margin=dict(t=100, r=150),  # Extra margin for annotations
+        margin=dict(l=60, r=30, t=60, b=140),  # Increase bottom margin
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -588,4 +588,4 @@ def create_dashboard(data: pd.DataFrame,
         unit = get_unit_for_variable(var)
         fig.update_yaxes(title_text=f"Wert [{unit}]" if unit else "Wert", row=i, col=1)
     
-    return fig 
+    return fig
