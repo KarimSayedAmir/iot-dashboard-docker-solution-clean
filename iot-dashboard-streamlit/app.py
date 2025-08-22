@@ -577,6 +577,10 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             # Replace values > 1000 with np.nan, then forward-fill
             visualization_data[col] = turbidity.mask(turbidity > 1000).ffill()
     
+    # Ensure ARA_Flow is non-negative
+    if "ARA_Flow" in visualization_data.columns:
+        visualization_data["ARA_Flow"] = visualization_data["ARA_Flow"].abs()
+    
     with current_tab[0]:
         st.header("Dashboard-Übersicht")
         
@@ -629,13 +633,19 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
             
             with col2:
                 # Gesamtmenge der ARA mit detaillierterer Anzeige
-                ara_flow = metrics.get('totalFlowARA', 0)
-                st.metric("Gesamtmenge ARA", f"{ara_flow:.2f} m³", help="Gesamtmenge aus ARA_Flow")
+                if "Total ARA Flow" in visualization_data.columns:
+                    ara_flow = visualization_data["Total ARA Flow"].dropna().iloc[-1]
+                else:
+                    ara_flow = metrics.get('totalFlowARA', 0)
+                st.metric("Gesamtmenge ARA", f"{ara_flow:.2f} m³", help="Letzter Wert aus Total ARA Flow")
             
             with col3:
                 # Gesamtmenge der Geräte 58 und 59 kombiniert
-                combined_flow = metrics.get('totalFlow5859', 0)
-                st.metric("Gesamtmenge Geräte 58+59", f"{combined_flow:.2f} m³", help="Kombinierte Gesamtmenge aller Geräte 58 und 59 Flows")
+                if "Total Flow_58_59" in visualization_data.columns:
+                    combined_flow = visualization_data["Total Flow_58_59"].dropna().iloc[-1]
+                else:
+                    combined_flow = metrics.get('totalFlow5859', 0)
+                st.metric("Gesamtmenge Geräte 58+59", f"{combined_flow:.2f} m³", help="Letzter Wert aus Total Flow_58_59")
                 
             # Zweite Reihe von Metriken für zusätzliche Flow-Daten, falls vorhanden
             if 'totalFlow58' in metrics or 'totalFlow59' in metrics or 'totalFlowGalgenkanal' in metrics:
@@ -1277,6 +1287,13 @@ if st.session_state.data is not None and st.session_state.filtered_data is not N
                                     st.metric("Datenpunkte", f"{len(export_data)}")
                         
                         # Export durchführen
+                        # After any cleaning and before export_current_view
+                        if "weeklyAggregates" in export_aggregates:
+                            if "Total ARA Flow" in export_data.columns:
+                                export_aggregates["weeklyAggregates"]["totalFlowARA"] = export_data["Total ARA Flow"].dropna().iloc[-1]
+                            if "Total Flow_58_59" in export_data.columns:
+                                export_aggregates["weeklyAggregates"]["totalFlow5859"] = export_data["Total Flow_58_59"].dropna().iloc[-1]
+                        
                         pdf_path = export_current_view(
                             export_data,
                             current_figures,
